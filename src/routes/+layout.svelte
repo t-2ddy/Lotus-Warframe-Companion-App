@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from "$app/state";
+  import { afterNavigate } from "$app/navigation";
   import { onMount, type Snippet } from "svelte";
   import { captureNow, pipeline, startStatus } from "$lib/status.svelte";
   import { time } from "$lib/format";
@@ -57,6 +58,13 @@
   });
 
   const win = () => getCurrentWindow();
+
+  // Pages scroll inside .content, not the window, so a new page would open at the last page's
+  // scroll position: start each page at the top.
+  let contentEl = $state<HTMLElement | null>(null);
+  afterNavigate(({ from, to }) => {
+    if (contentEl && from?.url.pathname !== to?.url.pathname) contentEl.scrollTop = 0;
+  });
 
   const status = $derived(pipeline.status);
   /** good: game running, no error · idle: game not running · bad: last capture failed */
@@ -185,7 +193,7 @@
         you're back online. Inventory capture still works.
       </div>
     {/if}
-    <main class="content">
+    <main class="content" bind:this={contentEl}>
       {@render children()}
     </main>
     {#if welcome.open}<Welcome />{/if}

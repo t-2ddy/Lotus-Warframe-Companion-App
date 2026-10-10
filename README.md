@@ -19,6 +19,85 @@ Void Fissure rewards.
 Everything runs on your PC. The app never writes to the game, never injects code, never sends
 input to the game and never uploads your data.
 
+<p align="center">
+  <a href="https://github.com/t-2ddy/Lotus-Warframe-Companion-App/releases/latest"><b>⬇ Download the latest version</b></a>
+  · Windows 10 / 11 · about 6 MB · updates itself
+</p>
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Home: wallet, daily and weekly checklists](assets/screenshots/home.png) | ![Foundry: every masterable item with its parts](assets/screenshots/foundry.png) |
+| **Home:** your wallet, daily and weekly checklists, arbitrations, fissures and stats | **Foundry:** every masterable item, what's mastered, owned and buildable |
+| ![Mastery Helper: progress and the fastest ways to level](assets/screenshots/mastery.png) | ![Rivens: every riven graded](assets/screenshots/rivens.png) |
+| **Mastery Helper:** progress by category and the fastest ways to gain mastery | **Rivens:** every riven with roll letters, grade and the weapon's ideal stats |
+| ![Ducanator: ducats per platinum](assets/screenshots/ducanator.png) | ![Inventory: parts, relics, mods, arcanes](assets/screenshots/inventory.png) |
+| **Ducanator:** which prime parts to sell to Baro, by ducats per platinum | **Inventory:** parts, relics, mods (with prices), arcanes and more |
+
+## Install
+
+1. Download `Lotus_<version>_x64-setup.exe` from the
+   [latest release](https://github.com/t-2ddy/Lotus-Warframe-Companion-App/releases/latest) and
+   run it.
+2. Windows SmartScreen may say it "protected your PC", because the installer isn't code-signed
+   yet. Choose **More info → Run anyway**.
+3. Open Lotus, then log in to Warframe. Your inventory is read at login and after each mission.
+4. For the in-game overlays, set Warframe to **Borderless** or **Windowed** (Options → Display),
+   and turn them on in **Tools**.
+
+Lotus updates itself: when a new version is out, a bar at the top offers **Update and restart**.
+
+## Known limits
+
+- **Windows only:** Windows 10 or 11, 64-bit.
+- **English game text only:** the overlays read the riven cards and reward names on screen.
+- **Overlays need Borderless or Windowed mode.** Exclusive fullscreen draws over them.
+- **Overlay reading is tuned on 16:9 screens at 100% scaling.** Other resolutions and Windows
+  display scaling may misread. Please report it if so.
+- **Inventory updates at login and mission end**, not live during a mission.
+- **Warframe Market page:** not built yet ("Soon"). Prices already show in Inventory, Ducanator
+  and the overlays.
+
+## FAQ
+
+**Is it bannable?**
+There's no guarantee either way. Digital Extremes hasn't approved Lotus, and its terms restrict
+third-party tools, so use it at your own risk. Here's exactly what Lotus does, so you can judge:
+
+- **The game's log file (`EE.log`) and screen captures.** These are "public" data: you can open
+  the log in Notepad and see the same screen yourself. Lotus uses the log to know when you log
+  in or finish a mission, and the overlays read the riven card or reward names on screen.
+- **Your inventory, read from the game's memory, read-only.** The inventory isn't in the log or on
+  screen, so this is the one place Lotus reads from the game process. It only reads: it never
+  writes to the game, injects code, hooks it, automates it or sends it input.
+
+Tools that read the game this way are widely used and generally tolerated, but that's not a
+promise. If you're not comfortable with the memory read, don't use Lotus.
+
+**Why does Windows warn me when I install it?**
+The installer isn't code-signed yet (signing certificates cost money). SmartScreen warns about
+any unsigned download it hasn't seen often. The source is public, and the release is built by
+GitHub Actions from this repository.
+
+**Where's my data?**
+On your PC only, in `%APPDATA%\io.lotus.companion\` (database, caches, settings). Lotus never
+uploads your inventory. It only downloads public data: item info, warframe.market prices, the
+arbitration schedule and the world state.
+
+**Does it slow the game down?**
+It shouldn't. Inventory is read once per login or mission end (a few seconds at most), and the overlays only look
+at the screen while a riven card or reward screen is up.
+
+**The overlay misread something. How do I report it?**
+Turn on **Tools → Debug logging**, reproduce it, then
+[open an issue](https://github.com/t-2ddy/Lotus-Warframe-Companion-App/issues) with your Lotus
+version, screen resolution, Windows display scaling and the `overlay.log` (Tools → Open folder).
+
+**How do I uninstall it?**
+Windows Settings → Apps → Lotus → Uninstall. To remove your data too, delete
+`%APPDATA%\io.lotus.companion` and `%LOCALAPPDATA%\io.lotus.companion`.
+
 ---
 
 ## Why use it
@@ -38,9 +117,7 @@ input to the game and never uploads your data.
 - **Standalone and private.** No Overwolf, no ads, no account. Your history stays in one local
   SQLite file.
 
-> **Account risk:** Digital Extremes' EULA restricts third-party tools. The app is strictly
-> read-only (it reads the log file, reads memory, and takes screen copies), but there is still
-> some risk in using any tool like this.
+> **Account risk:** see [Is it bannable?](#faq) above.
 
 ---
 
@@ -395,9 +472,11 @@ src-tauri/
     pipeline.rs           background thread tying the steps together
     overlay/              the in-game overlay (controller, log events, screen, OCR, cards, relics)
     rivens.rs, riven_*.rs riven views, grades, market listings, data refresh
-    foundry.rs, mastery.rs, inventory_view.rs, overview.rs, stats.rs, market.rs, …
+    foundry.rs, mastery.rs, inventory_view.rs, overview.rs, stats.rs, market.rs, ducanator.rs, …
   data/                   bundled data (rivens.json, nodes.json)
-scripts/                  data generators (Python)
+scripts/                  data generators (Python), bump-version.mjs
+assets/screenshots/       README screenshots
+.github/workflows/        CI and Release (installer, update signing, latest.json)
 docs/                     local only (git-ignored): build notes, design plans, and the
                           AlecaFrame reference screenshots the screenshot tests use (those
                           tests skip themselves without them)
