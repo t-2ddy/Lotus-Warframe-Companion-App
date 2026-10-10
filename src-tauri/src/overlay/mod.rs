@@ -40,6 +40,8 @@ use screen::{GameWindow, Region};
 const WINDOW: &str = "riven-overlay";
 const SETTING: &str = "riven_overlay";
 const RELIC_SETTING: &str = "relic_overlay";
+/// Tools → Debug logging: write `overlay.log` and the `overlay-debug/` images (off by default).
+const DEBUG_SETTING: &str = "debug_logging";
 /// Price freshness for relic rewards: fetched ahead within a day; on the reward screen, live.
 const PREFETCH_MAX_AGE_MS: i64 = 24 * 60 * 60 * 1000;
 const LIVE_MAX_AGE_MS: i64 = 10 * 60 * 1000;
@@ -79,15 +81,26 @@ const FITS_IN_TRIES: u32 = 8;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static RELICS_ENABLED: AtomicBool = AtomicBool::new(false);
-/// `<app data>/overlay.log`: what the overlay saw and did (cleared at each start).
+/// Debug logging (Tools page): only then are `overlay.log` and `overlay-debug/` written.
+static DEBUG: AtomicBool = AtomicBool::new(false);
+/// `<app data>/overlay.log`: what the overlay saw and did (cleared at each start). Written only
+/// with debug logging on.
 static LOG_FILE: OnceLock<std::path::PathBuf> = OnceLock::new();
 /// `<app data>/overlay-debug/`: the last image read for each card area (overwritten each read).
+/// Written only with debug logging on.
 static DEBUG_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
 
-/// Writes a line to the console and to `overlay.log`.
+/// Where to save the image just read, if debug logging is on (the folder is made when needed).
+fn debug_dir() -> Option<&'static std::path::PathBuf> {
+    let dir = DEBUG_DIR.get().filter(|_| DEBUG.load(Ordering::Relaxed))?;
+    let _ = std::fs::create_dir_all(dir);
+    Some(dir)
+}
+
+/// Writes a line to the console, and to `overlay.log` when debug logging is on.
 fn log(msg: &str) {
     eprintln!("[overlay] {msg}");
-    if let Some(path) = LOG_FILE.get() {
+    if let Some(path) = LOG_FILE.get().filter(|_| DEBUG.load(Ordering::Relaxed)) {
         use std::io::Write;
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
@@ -308,18 +321,15 @@ fn region_name(r: Region) -> &'static str {
 /// Creates the overlay window (hidden) and starts the controller thread. Call once from setup.
 pub fn start(app: &AppHandle, shared: Arc<Shared>) {
     if let Ok(dir) = app.path().app_data_dir() {
-        let path = dir.join("overlay.log");
-        let _ = std::fs::write(&path, "");
-        let _ = LOG_FILE.set(path);
-        let debug = dir.join("overlay-debug");
-        let _ = std::fs::create_dir_all(&debug);
-        let _ = DEBUG_DIR.set(debug);
+        let _ = LOG_FILE.set(dir.join("overlay.log"));
+        let _ = DEBUG_DIR.set(dir.join("overlay-debug"));
     }
     let setting_on = |name: &str| {
         shared.store.lock().unwrap().as_ref().and_then(|s| s.setting(name).ok().flatten()).is_some_and(|v| v == "on")
     };
     ENABLED.store(setting_on(SETTING), Ordering::Relaxed);
     RELICS_ENABLED.store(setting_on(RELIC_SETTING), Ordering::Relaxed);
+    set_debug(setting_on(DEBUG_SETTING));
 
     let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("/overlay".into()))
         .title("Game overlay")
@@ -847,7 +857,7 @@ impl Controller {
     /// OCRs a screen copy (upscaled 2x) into lines, saving the image and logging changed text.
     fn ocr_lines(&mut self, name: &'static str, shot: &screen::Image, info: &str) -> Option<Vec<String>> {
         let img = screen::upscale2(shot);
-        if let Some(dir) = DEBUG_DIR.get() {
+        if let Some(dir) = debug_dir() {
             let _ = screen::save_bmp(&img, &dir.join(format!("{name}.bmp")));
         }
         match ocr::read_lines(&img) {
@@ -1198,7 +1208,7 @@ impl Controller {
         let (x, y, w, h) = relics::NAMES.on(&game);
         let shot = screen::grab(x, y, w, h)?;
         let img = screen::upscale2(&shot);
-        if let Some(dir) = DEBUG_DIR.get() {
+        if let Some(dir) = debug_dir() {
             let _ = screen::save_bmp(&img, &dir.join("rewards.bmp"));
         }
         let words = match ocr::read_words(&img) {
@@ -1458,11 +1468,50 @@ fn main_monitor(app: &AppHandle) -> Option<GameWindow> {
 pub struct ToolSettings {
     pub riven_overlay: bool,
     pub relic_overlay: bool,
+    pub debug_logging: bool,
 }
 
 #[tauri::command]
 pub fn get_tool_settings() -> ToolSettings {
-    ToolSettings { riven_overlay: ENABLED.load(Ordering::Relaxed), relic_overlay: RELICS_ENABLED.load(Ordering::Relaxed) }
+    ToolSettings {
+        riven_overlay: ENABLED.load(Ordering::Relaxed),
+        relic_overlay: RELICS_ENABLED.load(Ordering::Relaxed),
+        debug_logging: DEBUG.load(Ordering::Relaxed),
+    }
+}
+
+/// Turns debug logging on (a fresh `overlay.log`) or off (the log and the saved images are
+/// removed, so nothing is left behind).
+fn set_debug(on: bool) {
+    DEBUG.store(on, Ordering::Relaxed);
+    if let Some(path) = LOG_FILE.get() {
+        if on {
+            let _ = std::fs::write(path, "");
+        } else {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    if !on {
+        if let Some(dir) = DEBUG_DIR.get() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+#[tauri::command]
+pub fn set_debug_logging(enabled: bool, shared: State<'_, Arc<Shared>>) -> Result<ToolSettings, String> {
+    if let Some(store) = shared.store.lock().unwrap().as_ref() {
+        store.set_setting(DEBUG_SETTING, if enabled { "on" } else { "off" }).map_err(|e| e.to_string())?;
+    }
+    set_debug(enabled);
+    olog!("debug logging {}", if enabled { "on" } else { "off" });
+    Ok(get_tool_settings())
+}
+
+/// The folder debug files are written to (for the Tools page).
+#[tauri::command]
+pub fn debug_folder() -> Option<String> {
+    LOG_FILE.get().and_then(|p| p.parent()).map(|d| d.display().to_string())
 }
 
 #[tauri::command]

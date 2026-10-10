@@ -1,6 +1,7 @@
 <script lang="ts">
   /** Tools: in-game helpers. Each one is off until switched on. */
   import { invoke } from "@tauri-apps/api/core";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import RivenDataStatus from "$lib/RivenDataStatus.svelte";
   import { checklistHidden, setChecklistHidden, type ChecklistKind } from "$lib/checklistPrefs.svelte";
@@ -10,19 +11,38 @@
     { kind: "weekly", label: "Hide weekly checklist" },
   ];
 
-  type Settings = { rivenOverlay: boolean; relicOverlay: boolean };
+  type Settings = { rivenOverlay: boolean; relicOverlay: boolean; debugLogging: boolean };
 
   let settings = $state<Settings | null>(null);
   let error = $state<string | null>(null);
   let previewing = $state(false);
   let previewingRelics = $state(false);
   let relicError = $state<string | null>(null);
+  let debugError = $state<string | null>(null);
+  /** Where overlay.log and overlay-debug/ go. */
+  let debugFolder = $state<string | null>(null);
 
   onMount(() => {
     invoke<Settings>("get_tool_settings")
       .then((s) => (settings = s))
       .catch((e) => (error = String(e)));
+    invoke<string | null>("debug_folder").then((f) => (debugFolder = f));
   });
+
+  async function setDebugLogging(enabled: boolean) {
+    try {
+      settings = await invoke<Settings>("set_debug_logging", { enabled });
+      debugError = null;
+    } catch (e) {
+      debugError = String(e);
+    }
+  }
+
+  async function openDebugFolder() {
+    if (!debugFolder) return;
+    const file = settings?.debugLogging ? `${debugFolder}\\overlay.log` : debugFolder;
+    await revealItemInDir(file).catch((e) => (debugError = String(e)));
+  }
 
   async function setOverlay(enabled: boolean) {
     try {
@@ -127,6 +147,35 @@
 
   <section class="tool">
     <div class="head">
+      <h2>Debug logging</h2>
+      <label class="switch" title={settings?.debugLogging ? "Turn off" : "Turn on"}>
+        <input
+          type="checkbox"
+          checked={settings?.debugLogging ?? false}
+          disabled={!settings}
+          onchange={(e) => setDebugLogging(e.currentTarget.checked)}
+        />
+        <span class="track"><span class="knob"></span></span>
+      </label>
+    </div>
+    <p>
+      For reporting a bug with the overlays. While it's on, the app writes what the overlays saw and did to
+      <b>overlay.log</b>, and keeps the last screen image it read for each card area in <b>overlay-debug</b>. Attach
+      those to a bug report. Turning it off deletes both.
+    </p>
+    <ul class="notes">
+      <li>Off by default. The images only show the riven card or reward names the overlay reads, nothing else on screen.</li>
+      <li>Riven cards that don't fit the stat data are always noted in <b>riven_misfits.jsonl</b> (card text only): that's how the app knows to fetch newer riven data.</li>
+    </ul>
+    <div class="actions">
+      <button onclick={openDebugFolder} disabled={!debugFolder}>Open folder</button>
+      {#if debugFolder}<span class="muted small mono">{debugFolder}</span>{/if}
+    </div>
+    {#if debugError}<p class="error">{debugError}</p>{/if}
+  </section>
+
+  <section class="tool">
+    <div class="head">
       <h2>Home checklists</h2>
     </div>
     <p>The Daily and Weekly checklists on the Home page. Hidden ones keep their ticks.</p>
@@ -158,6 +207,11 @@
   .muted {
     color: var(--muted);
     margin: 0 0 20px;
+  }
+
+  .mono {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    word-break: break-all;
   }
 
   .small {

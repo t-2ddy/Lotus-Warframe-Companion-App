@@ -317,7 +317,7 @@ window that ignores the mouse until **Ctrl+Tab**. The game must run in **Borderl
 | HTTP client | `net.rs` | One `ureq` agent with `User-Agent: Lotus/<version>` and a 30 s timeout |
 | Market | `market.rs` | warframe.market v2 item list (`gameRef` = game path, so no name guessing) and top orders. One request at a time, about 3 a second, cached in SQLite |
 | Settings | `update.rs` (`settings` table) | Tool switches and other app settings |
-| Overlay log | `<app data>/overlay.log` | Every overlay event, read and show/hide, for debugging. Cards that couldn't be worked out go to `riven_misfits.jsonl` |
+| Overlay log | `<app data>/overlay.log` | Only with **Tools → Debug logging** on (off by default): every overlay event, read and show/hide, plus the last image read per card area in `overlay-debug/`. Turning it off deletes both. Cards that couldn't be worked out always go to `riven_misfits.jsonl` (card text only), which triggers a riven data check |
 
 ### Local files (`%APPDATA%\io.lotus.companion\`)
 
@@ -330,7 +330,8 @@ window that ignores the mouse until **Ctrl+Tab**. The game must run in **Borderl
 | `riven-grades/` | Grading sheet tabs (CSV) |
 | `riven-data/` | Public Export Plus files and the rebuilt riven data |
 | `arbitrations/`, `nodes/` | Arbitration schedule, star chart data |
-| `overlay.log`, `overlay-debug/`, `riven_misfits.jsonl` | Overlay diagnostics |
+| `overlay.log`, `overlay-debug/` | Overlay diagnostics, only while Debug logging is on |
+| `riven_misfits.jsonl` | Riven cards that didn't fit the stat data (card text only) |
 
 ---
 

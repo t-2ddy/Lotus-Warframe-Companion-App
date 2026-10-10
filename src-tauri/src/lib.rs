@@ -69,6 +69,8 @@ pub fn run() {
             overlay::set_riven_overlay,
             overlay::preview_riven_overlay,
             overlay::set_relic_overlay,
+            overlay::set_debug_logging,
+            overlay::debug_folder,
             overlay::preview_relic_overlay,
             overlay::overlay_state,
             overlay::overlay_done
