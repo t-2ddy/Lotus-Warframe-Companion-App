@@ -1,0 +1,3596 @@
+{
+ "source": "Warframe wiki, Module:Missions/data (CC BY-SA 3.0)",
+ "nodes": [
+  {
+   "tag": "MT_ASSASSINATION",
+   "name": "MT_ASSASSINATION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_EXTERMINATION",
+   "name": "MT_EXTERMINATION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_SURVIVAL",
+   "name": "MT_SURVIVAL",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RESCUE",
+   "name": "MT_RESCUE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_SABOTAGE",
+   "name": "MT_SABOTAGE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_CAPTURE",
+   "name": "MT_CAPTURE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_COUNTER_INTEL",
+   "name": "MT_COUNTER_INTEL",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_INTEL",
+   "name": "MT_INTEL",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_DEFENSE",
+   "name": "MT_DEFENSE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_MOBILE_DEFENSE",
+   "name": "MT_MOBILE_DEFENSE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_PVP",
+   "name": "MT_PVP",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_MASTERY",
+   "name": "MT_MASTERY",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RECOVERY",
+   "name": "MT_RECOVERY",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_TERRITORY",
+   "name": "MT_TERRITORY",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RETRIEVAL",
+   "name": "MT_RETRIEVAL",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_HIVE",
+   "name": "MT_HIVE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_SALVAGE",
+   "name": "MT_SALVAGE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_EXCAVATE",
+   "name": "MT_EXCAVATE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RAID",
+   "name": "MT_RAID",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_PURGE",
+   "name": "MT_PURGE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_GENERIC",
+   "name": "MT_GENERIC",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_PURIFY",
+   "name": "MT_PURIFY",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ARENA",
+   "name": "MT_ARENA",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_JUNCTION",
+   "name": "MT_JUNCTION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_PURSUIT",
+   "name": "MT_PURSUIT",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RACE",
+   "name": "MT_RACE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ASSAULT",
+   "name": "MT_ASSAULT",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_EVACUATION",
+   "name": "MT_EVACUATION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_LANDSCAPE",
+   "name": "MT_LANDSCAPE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RESOURCE_THEFT",
+   "name": "MT_RESOURCE_THEFT",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ENDLESS_EXTERMINATION",
+   "name": "MT_ENDLESS_EXTERMINATION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ENDLESS_DUVIRI",
+   "name": "MT_ENDLESS_DUVIRI",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ARTIFACT",
+   "name": "MT_ARTIFACT",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_RAILJACK",
+   "name": "MT_RAILJACK",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_CORRUPTION",
+   "name": "MT_CORRUPTION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_VOID_CASCADE",
+   "name": "MT_VOID_CASCADE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ARMAGEDDON",
+   "name": "MT_ARMAGEDDON",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_VAULTS",
+   "name": "MT_VAULTS",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ALCHEMY",
+   "name": "MT_ALCHEMY",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ASCENSION",
+   "name": "MT_ASCENSION",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_OFFERING",
+   "name": "MT_OFFERING",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_ENDLESS_CAPTURE",
+   "name": "MT_ENDLESS_CAPTURE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_PVPVE",
+   "name": "MT_PVPVE",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_DESCENT",
+   "name": "MT_DESCENT",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_TAU_WAR",
+   "name": "MT_TAU_WAR",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "MT_PAINT_FLOOD",
+   "name": "MT_PAINT_FLOOD",
+   "planet": "",
+   "type": "",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode801",
+   "name": "Sanctuary Onslaught",
+   "planet": "Sanctuary Onslaught",
+   "type": "Sanctuary Onslaught",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode802",
+   "name": "Elite Sanctuary Onslaught",
+   "planet": "Sanctuary Onslaught",
+   "type": "Sanctuary Onslaught",
+   "enemy": "",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "PvpNode0",
+   "name": "Cephalon Capture",
+   "planet": "Saturn",
+   "type": "Conclave",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "PvpNode9",
+   "name": "Team Annihilation",
+   "planet": "Saturn",
+   "type": "Conclave",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "PvpNode10",
+   "name": "Annihilation",
+   "planet": "Saturn",
+   "type": "Conclave",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode94",
+   "name": "Apollodorus",
+   "planet": "Mercury",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode223",
+   "name": "Boethius",
+   "planet": "Mercury",
+   "type": "Mobile Defense",
+   "enemy": "Infested",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode119",
+   "name": "Caloris",
+   "planet": "Mercury",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode12",
+   "name": "Elion",
+   "planet": "Mercury",
+   "type": "Capture",
+   "enemy": "Grineer",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode130",
+   "name": "Lares",
+   "planet": "Mercury",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode103",
+   "name": "M Prime",
+   "planet": "Mercury",
+   "type": "Exterminate",
+   "enemy": "Infested / Grineer",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode224",
+   "name": "Odin",
+   "planet": "Mercury",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode226",
+   "name": "Pantheon",
+   "planet": "Mercury",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode225",
+   "name": "Suisei",
+   "planet": "Mercury",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 3,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode28",
+   "name": "Terminus",
+   "planet": "Mercury",
+   "type": "Sabotage",
+   "enemy": "Infested / Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode108",
+   "name": "Tolstoj",
+   "planet": "Mercury",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 25,
+   "tracked": true
+  },
+  {
+   "tag": "MercuryHUB",
+   "name": "Larunda Relay",
+   "planet": "Mercury",
+   "type": "Relay",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolarisUnitedHub1",
+   "name": "Fortuna",
+   "planet": "Venus",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode129",
+   "name": "Orb Vallis",
+   "planet": "Venus",
+   "type": "Free Roam",
+   "enemy": "Corpus",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "NokkoColony",
+   "name": "Deepmines",
+   "planet": "Venus",
+   "type": "Free Roam",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode2",
+   "name": "Aphrodite",
+   "planet": "Venus",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode23",
+   "name": "Cytherean",
+   "planet": "Venus",
+   "type": "Interception",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode128",
+   "name": "E Gate",
+   "planet": "Venus",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode61",
+   "name": "Ishtar",
+   "planet": "Venus",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode101",
+   "name": "Kiliken",
+   "planet": "Venus",
+   "type": "Excavation",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode109",
+   "name": "Linea",
+   "planet": "Venus",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode1",
+   "name": "Malva",
+   "planet": "Venus",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode902",
+   "name": "Montes",
+   "planet": "Venus",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode0",
+   "name": "Romula",
+   "planet": "Venus",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode22",
+   "name": "Tessera",
+   "planet": "Venus",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode66",
+   "name": "Unda",
+   "planet": "Venus",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode107",
+   "name": "Venera",
+   "planet": "Venus",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode123",
+   "name": "V Prime",
+   "planet": "Venus",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode104",
+   "name": "Fossa",
+   "planet": "Venus",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 41,
+   "tracked": true
+  },
+  {
+   "tag": "VenusToMercuryJunction",
+   "name": "Mercury Junction",
+   "planet": "Venus",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode239",
+   "name": "Vesper Relay",
+   "planet": "Venus",
+   "type": "Follie's Hunt",
+   "enemy": "Tenno",
+   "xp": 50,
+   "tracked": true
+  },
+  {
+   "tag": "CetusHub4",
+   "name": "Cetus",
+   "planet": "Earth",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode228",
+   "name": "Plains of Eidolon",
+   "planet": "Earth",
+   "type": "Free Roam",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode79",
+   "name": "Cambria",
+   "planet": "Earth",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode75",
+   "name": "Cervantes",
+   "planet": "Earth",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode27",
+   "name": "E Prime",
+   "planet": "Earth",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode903",
+   "name": "Erpo",
+   "planet": "Earth",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode59",
+   "name": "Eurasia",
+   "planet": "Earth",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode39",
+   "name": "Everest",
+   "planet": "Earth",
+   "type": "Excavation",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode85",
+   "name": "Gaia",
+   "planet": "Earth",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 20,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode26",
+   "name": "Lith",
+   "planet": "Earth",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode63",
+   "name": "Mantle",
+   "planet": "Earth",
+   "type": "Capture",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode89",
+   "name": "Mariana",
+   "planet": "Earth",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode15",
+   "name": "Pacific",
+   "planet": "Earth",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode2",
+   "name": "Coba",
+   "planet": "Earth",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode24",
+   "name": "Oro",
+   "planet": "Earth",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 24,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode3",
+   "name": "Tikal",
+   "planet": "Earth",
+   "type": "Excavation",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode451",
+   "name": "Saya's Visions",
+   "planet": "Earth",
+   "type": "Shrine Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "EarthToVenusJunction",
+   "name": "Venus Junction",
+   "planet": "Earth",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "EarthToMarsJunction",
+   "name": "Mars Junction",
+   "planet": "Earth",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "ToggleBootLevel",
+   "name": "Drifter's Camp",
+   "planet": "Earth",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "EarthHUB",
+   "name": "Strata Relay",
+   "planet": "Earth",
+   "type": "Relay",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "IronwakeHUB3",
+   "name": "Iron Wake",
+   "planet": "Earth",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "TradeHUB1",
+   "name": "Maroo's Bazaar",
+   "planet": "Mars",
+   "type": "Relay",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode106",
+   "name": "Alator",
+   "planet": "Mars",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode45",
+   "name": "Ara",
+   "planet": "Mars",
+   "type": "Capture",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode113",
+   "name": "Ares",
+   "planet": "Mars",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode41",
+   "name": "Arval",
+   "planet": "Mars",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode16",
+   "name": "Augustus",
+   "planet": "Mars",
+   "type": "Excavation",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode65",
+   "name": "Gradivus",
+   "planet": "Mars",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 45,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode58",
+   "name": "Hellas",
+   "planet": "Mars",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode8",
+   "name": "Kadesh",
+   "planet": "Mars",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode36",
+   "name": "Martialis",
+   "planet": "Mars",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode30",
+   "name": "Olympus",
+   "planet": "Mars",
+   "type": "Disruption",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode46",
+   "name": "Spear",
+   "planet": "Mars",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode904",
+   "name": "Syrtis",
+   "planet": "Mars",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode11",
+   "name": "Tharsis",
+   "planet": "Mars",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode450",
+   "name": "Tyana Pass",
+   "planet": "Mars",
+   "type": "Mirror Defense",
+   "enemy": "Grineer / Corpus",
+   "xp": 18,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode14",
+   "name": "Ultor",
+   "planet": "Mars",
+   "type": "Exterminate",
+   "enemy": "Grineer / Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode68",
+   "name": "Vallis",
+   "planet": "Mars",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode9",
+   "name": "Wahiba",
+   "planet": "Mars",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode99",
+   "name": "War",
+   "planet": "Mars",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "MarsToCeresJunction",
+   "name": "Ceres Junction",
+   "planet": "Mars",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "MarsToPhobosJunction",
+   "name": "Phobos Junction",
+   "planet": "Mars",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode1",
+   "name": "Roche",
+   "planet": "Phobos",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode15",
+   "name": "Sharpless",
+   "planet": "Phobos",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode11",
+   "name": "Gulliver",
+   "planet": "Phobos",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode10",
+   "name": "Kepler",
+   "planet": "Phobos",
+   "type": "Rush",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode10",
+   "name": "Memphis",
+   "planet": "Phobos",
+   "type": "Defection",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode12",
+   "name": "Monolith",
+   "planet": "Phobos",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode14",
+   "name": "Shklovsky",
+   "planet": "Phobos",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode2",
+   "name": "Skyresh",
+   "planet": "Phobos",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode3",
+   "name": "Stickney",
+   "planet": "Phobos",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 157,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode11",
+   "name": "Zeugma",
+   "planet": "Phobos",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SettlementNode20",
+   "name": "Iliad",
+   "planet": "Phobos",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 100,
+   "tracked": true
+  },
+  {
+   "tag": "DeimosHub",
+   "name": "Necralisk",
+   "planet": "Deimos",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode706",
+   "name": "Horend",
+   "planet": "Deimos",
+   "type": "Capture",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode708",
+   "name": "Phlegyas",
+   "planet": "Deimos",
+   "type": "Exterminate",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode229",
+   "name": "Cambion Drift",
+   "planet": "Deimos",
+   "type": "Free Roam",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode710",
+   "name": "Formido",
+   "planet": "Deimos",
+   "type": "Sabotage",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode707",
+   "name": "Hyf",
+   "planet": "Deimos",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode709",
+   "name": "Dirus",
+   "planet": "Deimos",
+   "type": "Mobile Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode712",
+   "name": "Magnacidium",
+   "planet": "Deimos",
+   "type": "Assassination",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode711",
+   "name": "Terrorem",
+   "planet": "Deimos",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode713",
+   "name": "Exequias",
+   "planet": "Deimos",
+   "type": "Assassination",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "EntratiLabHub",
+   "name": "Sanctum Anatomica",
+   "planet": "Deimos",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode715",
+   "name": "Effervo",
+   "planet": "Deimos",
+   "type": "Assassination",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode716",
+   "name": "Nex",
+   "planet": "Deimos",
+   "type": "Exterminate",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode717",
+   "name": "Persto",
+   "planet": "Deimos",
+   "type": "Survival",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode718",
+   "name": "Cambire",
+   "planet": "Deimos",
+   "type": "Alchemy",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode719",
+   "name": "Munio",
+   "planet": "Deimos",
+   "type": "Mirror Defense",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode720",
+   "name": "Testudo",
+   "planet": "Deimos",
+   "type": "Netracells",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode721",
+   "name": "Armatus",
+   "planet": "Deimos",
+   "type": "Disruption",
+   "enemy": "The Murmur",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CeresToJupiterJunction",
+   "name": "Jupiter Junction",
+   "planet": "Deimos",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "/Lotus/Types/Keys/SyndicateCacheHuntBaseKeyItem",
+   "name": "Abyssal Zone",
+   "planet": "Ceres",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode132",
+   "name": "Bode",
+   "planet": "Ceres",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode149",
+   "name": "Casta",
+   "planet": "Ceres",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode147",
+   "name": "Cinxia",
+   "planet": "Ceres",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode146",
+   "name": "Draco",
+   "planet": "Ceres",
+   "type": "Survival",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode23",
+   "name": "Gabii",
+   "planet": "Ceres",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode141",
+   "name": "Ker",
+   "planet": "Ceres",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode140",
+   "name": "Kiste",
+   "planet": "Ceres",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode139",
+   "name": "Lex",
+   "planet": "Ceres",
+   "type": "Capture",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode138",
+   "name": "Ludi",
+   "planet": "Ceres",
+   "type": "Hijack",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode137",
+   "name": "Nuovo",
+   "planet": "Ceres",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode131",
+   "name": "Pallas",
+   "planet": "Ceres",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode22",
+   "name": "Seimeni",
+   "planet": "Ceres",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode135",
+   "name": "Thon",
+   "planet": "Ceres",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode144",
+   "name": "Exta",
+   "planet": "Ceres",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 163,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode88",
+   "name": "Adrastea",
+   "planet": "Jupiter",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode97",
+   "name": "Amalthea",
+   "planet": "Jupiter",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode73",
+   "name": "Ananke",
+   "planet": "Jupiter",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode25",
+   "name": "Callisto",
+   "planet": "Jupiter",
+   "type": "Interception",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode74",
+   "name": "Carme",
+   "planet": "Jupiter",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode121",
+   "name": "Carpo",
+   "planet": "Jupiter",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode100",
+   "name": "Elara",
+   "planet": "Jupiter",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode905",
+   "name": "Galilea",
+   "planet": "Jupiter",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode87",
+   "name": "Ganymede",
+   "planet": "Jupiter",
+   "type": "Disruption",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode125",
+   "name": "Io",
+   "planet": "Jupiter",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode126",
+   "name": "Metis",
+   "planet": "Jupiter",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode10",
+   "name": "Thebe",
+   "planet": "Jupiter",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode5",
+   "name": "Cameria",
+   "planet": "Jupiter",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode4",
+   "name": "Sinai",
+   "planet": "Jupiter",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode53",
+   "name": "Themisto",
+   "planet": "Jupiter",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode740",
+   "name": "The Ropalolyst",
+   "planet": "Jupiter",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "JupiterToEuropaJunction",
+   "name": "Europa Junction",
+   "planet": "Jupiter",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "JupiterToSaturnJunction",
+   "name": "Saturn Junction",
+   "planet": "Jupiter",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode203",
+   "name": "Abaddon",
+   "planet": "Europa",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode204",
+   "name": "Armaros",
+   "planet": "Europa",
+   "type": "Exterminate",
+   "enemy": "Infested / Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode205",
+   "name": "Baal",
+   "planet": "Europa",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode220",
+   "name": "Kokabiel",
+   "planet": "Europa",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode209",
+   "name": "Morax",
+   "planet": "Europa",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode217",
+   "name": "Orias",
+   "planet": "Europa",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode211",
+   "name": "Ose",
+   "planet": "Europa",
+   "type": "Interception",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode212",
+   "name": "Paimon",
+   "planet": "Europa",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode214",
+   "name": "Sorath",
+   "planet": "Europa",
+   "type": "Hijack",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode215",
+   "name": "Valac",
+   "planet": "Europa",
+   "type": "Spy",
+   "enemy": "Grineer / Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode216",
+   "name": "Valefor",
+   "planet": "Europa",
+   "type": "Excavation",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode7",
+   "name": "Cholistan",
+   "planet": "Europa",
+   "type": "Excavation",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode6",
+   "name": "Larzac",
+   "planet": "Europa",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode210",
+   "name": "Naamah",
+   "planet": "Europa",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 138,
+   "tracked": true
+  },
+  {
+   "tag": "GrendelKeyBMissionName",
+   "name": "Archaeo-freighter",
+   "planet": "Europa",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "GrendelKeyAMissionName",
+   "name": "Icefields of Riddah",
+   "planet": "Europa",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "GrendelKeyCMissionName",
+   "name": "Mines of Karishh",
+   "planet": "Europa",
+   "type": "Excavation",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode31",
+   "name": "Anthe",
+   "planet": "Saturn",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode82",
+   "name": "Calypso",
+   "planet": "Saturn",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode12",
+   "name": "Caracol",
+   "planet": "Saturn",
+   "type": "Defection",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode70",
+   "name": "Cassini",
+   "planet": "Saturn",
+   "type": "Capture",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode67",
+   "name": "Dione",
+   "planet": "Saturn",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode19",
+   "name": "Enceladus",
+   "planet": "Saturn",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 49,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode42",
+   "name": "Helene",
+   "planet": "Saturn",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode93",
+   "name": "Keeler",
+   "planet": "Saturn",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode50",
+   "name": "Numa",
+   "planet": "Saturn",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode906",
+   "name": "Pandora",
+   "planet": "Saturn",
+   "type": "Pursuit",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode13",
+   "name": "Piscinas",
+   "planet": "Saturn",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode18",
+   "name": "Rhea",
+   "planet": "Saturn",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode20",
+   "name": "Telesto",
+   "planet": "Saturn",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode96",
+   "name": "Titan",
+   "planet": "Saturn",
+   "type": "Survival",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode32",
+   "name": "Tethys",
+   "planet": "Saturn",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 55,
+   "tracked": true
+  },
+  {
+   "tag": "SaturnToUranusJunction",
+   "name": "Uranus Junction",
+   "planet": "Saturn",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SaturnHUB",
+   "name": "Kronia Relay",
+   "planet": "Saturn",
+   "type": "Relay",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode33",
+   "name": "Ariel",
+   "planet": "Uranus",
+   "type": "Capture",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode17",
+   "name": "Assur",
+   "planet": "Uranus",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode907",
+   "name": "Caelus",
+   "planet": "Uranus",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode60",
+   "name": "Caliban",
+   "planet": "Uranus",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode83",
+   "name": "Cressida",
+   "planet": "Uranus",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode98",
+   "name": "Desdemona",
+   "planet": "Uranus",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode723",
+   "name": "Brutus",
+   "planet": "Uranus",
+   "type": "Ascension",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode69",
+   "name": "Ophelia",
+   "planet": "Uranus",
+   "type": "Survival",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode114",
+   "name": "Puck",
+   "planet": "Uranus",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 44,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode9",
+   "name": "Rosalind",
+   "planet": "Uranus",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode122",
+   "name": "Stephano",
+   "planet": "Uranus",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode34",
+   "name": "Sycorax",
+   "planet": "Uranus",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode64",
+   "name": "Umbriel",
+   "planet": "Uranus",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode16",
+   "name": "Ur",
+   "planet": "Uranus",
+   "type": "Disruption",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode105",
+   "name": "Titania",
+   "planet": "Uranus",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 69,
+   "tracked": true
+  },
+  {
+   "tag": "UranusToNeptuneJunction",
+   "name": "Neptune Junction",
+   "planet": "Uranus",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode6",
+   "name": "Despina",
+   "planet": "Neptune",
+   "type": "Excavation",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode1",
+   "name": "Galatea",
+   "planet": "Neptune",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode21",
+   "name": "Kelashin",
+   "planet": "Neptune",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode118",
+   "name": "Laomedeia",
+   "planet": "Neptune",
+   "type": "Disruption",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode49",
+   "name": "Larissa",
+   "planet": "Neptune",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode84",
+   "name": "Nereid",
+   "planet": "Neptune",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode62",
+   "name": "Neso",
+   "planet": "Neptune",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode17",
+   "name": "Proteus",
+   "planet": "Neptune",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode908",
+   "name": "Salacia",
+   "planet": "Neptune",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode57",
+   "name": "Sao",
+   "planet": "Neptune",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode78",
+   "name": "Triton",
+   "planet": "Neptune",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode20",
+   "name": "Yursa",
+   "planet": "Neptune",
+   "type": "Defection",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode127",
+   "name": "Psamathe",
+   "planet": "Neptune",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 52,
+   "tracked": true
+  },
+  {
+   "tag": "EventNode763",
+   "name": "The Index: Endurance",
+   "planet": "Neptune",
+   "type": "Arena",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "NeptuneToPlutoJunction",
+   "name": "Pluto Junction",
+   "planet": "Neptune",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode4",
+   "name": "Acheron",
+   "planet": "Pluto",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode43",
+   "name": "Cerberus",
+   "planet": "Pluto",
+   "type": "Interception",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode56",
+   "name": "Cypress",
+   "planet": "Pluto",
+   "type": "Sabotage",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode76",
+   "name": "Hydra",
+   "planet": "Pluto",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode38",
+   "name": "Minthe",
+   "planet": "Pluto",
+   "type": "Mobile Defense",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode21",
+   "name": "Narcissus",
+   "planet": "Pluto",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode102",
+   "name": "Oceanum",
+   "planet": "Pluto",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode72",
+   "name": "Outer Terminus",
+   "planet": "Pluto",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode81",
+   "name": "Palus",
+   "planet": "Pluto",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode48",
+   "name": "Regna",
+   "planet": "Pluto",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode25",
+   "name": "Hieracon",
+   "planet": "Pluto",
+   "type": "Excavation",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode24",
+   "name": "Sechura",
+   "planet": "Pluto",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode51",
+   "name": "Hades",
+   "planet": "Pluto",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 51,
+   "tracked": true
+  },
+  {
+   "tag": "PlutoToErisJunction",
+   "name": "Eris Junction",
+   "planet": "Pluto",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "PlutoHUB",
+   "name": "Orcus Relay",
+   "planet": "Pluto",
+   "type": "Relay",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode189",
+   "name": "Naga",
+   "planet": "Sedna",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode185",
+   "name": "Berehynia",
+   "planet": "Sedna",
+   "type": "Interception",
+   "enemy": "Grineer",
+   "xp": 50,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode195",
+   "name": "Hydron",
+   "planet": "Sedna",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode187",
+   "name": "Selkie",
+   "planet": "Sedna",
+   "type": "Survival",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode181",
+   "name": "Adaro",
+   "planet": "Sedna",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode184",
+   "name": "Rusalka",
+   "planet": "Sedna",
+   "type": "Sabotage",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode188",
+   "name": "Kelpie",
+   "planet": "Sedna",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode191",
+   "name": "Marid",
+   "planet": "Sedna",
+   "type": "Hijack",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode196",
+   "name": "Charybdis",
+   "planet": "Sedna",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode14",
+   "name": "Amarna",
+   "planet": "Sedna",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode15",
+   "name": "Sangeru",
+   "planet": "Sedna",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode177",
+   "name": "Kappa",
+   "planet": "Sedna",
+   "type": "Disruption",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode190",
+   "name": "Nakki",
+   "planet": "Sedna",
+   "type": "Arena",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode199",
+   "name": "Yam",
+   "planet": "Sedna",
+   "type": "Arena",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode183",
+   "name": "Vodyanoi",
+   "planet": "Sedna",
+   "type": "Arena",
+   "enemy": "Grineer",
+   "xp": 177,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode193",
+   "name": "Merrow",
+   "planet": "Sedna",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 100,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode153",
+   "name": "Brugia",
+   "planet": "Eris",
+   "type": "Rescue",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode162",
+   "name": "Isos",
+   "planet": "Eris",
+   "type": "Capture",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode164",
+   "name": "Kala-azar",
+   "planet": "Eris",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode175",
+   "name": "Naeglar",
+   "planet": "Eris",
+   "type": "Sabotage",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode166",
+   "name": "Nimus",
+   "planet": "Eris",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode167",
+   "name": "Oestrus",
+   "planet": "Eris",
+   "type": "Infested Salvage",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode171",
+   "name": "Saxis",
+   "planet": "Eris",
+   "type": "Exterminate",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode173",
+   "name": "Solium",
+   "planet": "Eris",
+   "type": "Mobile Defense",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode172",
+   "name": "Xini",
+   "planet": "Eris",
+   "type": "Interception",
+   "enemy": "Infested",
+   "xp": 279,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode18",
+   "name": "Akkad",
+   "planet": "Eris",
+   "type": "Defense",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "ClanNode19",
+   "name": "Zabala",
+   "planet": "Eris",
+   "type": "Survival",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode701",
+   "name": "Jordas Golem Assassinate",
+   "planet": "Eris",
+   "type": "Assassination",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode705",
+   "name": "Mutalist Alad V Assassinate",
+   "planet": "Eris",
+   "type": "Assassination",
+   "enemy": "Infested",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "ErisToSednaJunction",
+   "name": "Sedna Junction",
+   "planet": "Eris",
+   "type": "Solar Rail Junction",
+   "enemy": "Tenno",
+   "xp": 1000,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode308",
+   "name": "Apollo",
+   "planet": "Lua",
+   "type": "Disruption",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode310",
+   "name": "Circulus",
+   "planet": "Lua",
+   "type": "Survival",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode304",
+   "name": "Copernicus",
+   "planet": "Lua",
+   "type": "Capture",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode301",
+   "name": "Grimaldi",
+   "planet": "Lua",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode306",
+   "name": "Pavlov",
+   "planet": "Lua",
+   "type": "Spy",
+   "enemy": "Grineer / Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode300",
+   "name": "Plato",
+   "planet": "Lua",
+   "type": "Exterminate",
+   "enemy": "Grineer / Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode305",
+   "name": "St\u00f6fler",
+   "planet": "Lua",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode302",
+   "name": "Tycho",
+   "planet": "Lua",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode309",
+   "name": "Yuvarium",
+   "planet": "Lua",
+   "type": "Survival",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode307",
+   "name": "Zeipel",
+   "planet": "Lua",
+   "type": "Rescue",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode746",
+   "name": "Dakata",
+   "planet": "Kuva Fortress",
+   "type": "Exterminate",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode748",
+   "name": "Garus",
+   "planet": "Kuva Fortress",
+   "type": "Rescue",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode741",
+   "name": "Koro",
+   "planet": "Kuva Fortress",
+   "type": "Assault",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode742",
+   "name": "Nabuk",
+   "planet": "Kuva Fortress",
+   "type": "Defense",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode747",
+   "name": "Pago",
+   "planet": "Kuva Fortress",
+   "type": "Spy",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode743",
+   "name": "Rotuma",
+   "planet": "Kuva Fortress",
+   "type": "Mobile Defense",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode745",
+   "name": "Tamu",
+   "planet": "Kuva Fortress",
+   "type": "Disruption",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode744",
+   "name": "Taveuni",
+   "planet": "Kuva Fortress",
+   "type": "Survival",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode400",
+   "name": "Teshub",
+   "planet": "Void",
+   "type": "Exterminate",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode401",
+   "name": "Hepit",
+   "planet": "Void",
+   "type": "Capture",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode402",
+   "name": "Taranis",
+   "planet": "Void",
+   "type": "Defense",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode403",
+   "name": "Tiwaz",
+   "planet": "Void",
+   "type": "Mobile Defense",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode404",
+   "name": "Stribog",
+   "planet": "Void",
+   "type": "Sabotage",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode405",
+   "name": "Ani",
+   "planet": "Void",
+   "type": "Survival",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode406",
+   "name": "Ukko",
+   "planet": "Void",
+   "type": "Capture",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode407",
+   "name": "Oxomoco",
+   "planet": "Void",
+   "type": "Exterminate",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode408",
+   "name": "Belenus",
+   "planet": "Void",
+   "type": "Defense",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode410",
+   "name": "Aten",
+   "planet": "Void",
+   "type": "Mobile Defense",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode411",
+   "name": "Marduk",
+   "planet": "Void",
+   "type": "Sabotage",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode412",
+   "name": "Mithra",
+   "planet": "Void",
+   "type": "Interception",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode409",
+   "name": "Mot",
+   "planet": "Void",
+   "type": "Survival",
+   "enemy": "Corrupted",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode232",
+   "name": "Tuvul Commons",
+   "planet": "Zariman",
+   "type": "Void Cascade",
+   "enemy": "Grineer or Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode230",
+   "name": "Everview Arc",
+   "planet": "Zariman",
+   "type": "Void Flood",
+   "enemy": "Grineer or Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode231",
+   "name": "Halako Perimeter",
+   "planet": "Zariman",
+   "type": "Exterminate",
+   "enemy": "Grineer or Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode235",
+   "name": "The Greenway",
+   "planet": "Zariman",
+   "type": "Mobile Defense",
+   "enemy": "Grineer or Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode233",
+   "name": "Oro Works",
+   "planet": "Zariman",
+   "type": "Void Armageddon",
+   "enemy": "Grineer or Corpus",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "ZarimanHub",
+   "name": "Chrysalith",
+   "planet": "Zariman",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode234",
+   "name": "Dormizone",
+   "planet": "Zariman",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode236",
+   "name": "The Duviri Experience",
+   "planet": "Duviri",
+   "type": "Free Roam",
+   "enemy": "Duviri",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode237",
+   "name": "The Lone Story (Duviri)",
+   "planet": "Duviri",
+   "type": "Free Roam",
+   "enemy": "Duviri",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode238",
+   "name": "The Circuit",
+   "planet": "Duviri",
+   "type": "Free Roam",
+   "enemy": "Duviri",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode850",
+   "name": "K\u00f6binn West",
+   "planet": "H\u00f6llvania",
+   "type": "Legacyte Harvest",
+   "enemy": "Techrot",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode851",
+   "name": "Mischta Ramparts",
+   "planet": "H\u00f6llvania",
+   "type": "Hell-Scrub",
+   "enemy": "Scaldra",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode852",
+   "name": "Old Konderuk",
+   "planet": "H\u00f6llvania",
+   "type": "Hell-Scrub",
+   "enemy": "Techrot",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode853",
+   "name": "Mausoleum East",
+   "planet": "H\u00f6llvania",
+   "type": "Exterminate",
+   "enemy": "Scaldra",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode854",
+   "name": "Rhu Manor",
+   "planet": "H\u00f6llvania",
+   "type": "Exterminate",
+   "enemy": "Techrot",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode855",
+   "name": "Lower Vehrvod",
+   "planet": "H\u00f6llvania",
+   "type": "Faceoff",
+   "enemy": "Scaldra",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode856",
+   "name": "Victory Plaza",
+   "planet": "H\u00f6llvania",
+   "type": "Assassination",
+   "enemy": "Scaldra",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode857",
+   "name": "Vehrvod District",
+   "planet": "H\u00f6llvania",
+   "type": "Faceoff",
+   "enemy": "Scaldra",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode858",
+   "name": "Solstice Square",
+   "planet": "H\u00f6llvania",
+   "type": "Stage Defense",
+   "enemy": "Scaldra",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "1999Hub",
+   "name": "H\u00f6llvania Central Mall",
+   "planet": "H\u00f6llvania",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "SolNode253",
+   "name": "The Descendia",
+   "planet": "Dark Refractory",
+   "type": "The Descendia",
+   "enemy": "Orokin",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode250",
+   "name": "Recall: Hunhullus",
+   "planet": "Dark Refractory",
+   "type": "The Perita Rebellion",
+   "enemy": "Anarchs",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode251",
+   "name": "Recall: Dactolyst",
+   "planet": "Dark Refractory",
+   "type": "The Perita Rebellion",
+   "enemy": "Anarchs",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode252",
+   "name": "Recall: Prime Vanguard",
+   "planet": "Dark Refractory",
+   "type": "The Perita Rebellion",
+   "enemy": "Anarchs",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "SolNode257",
+   "name": "The Guilty",
+   "planet": "Dark Refractory",
+   "type": "The Guilty",
+   "enemy": "Anarchs",
+   "xp": 0,
+   "tracked": true
+  },
+  {
+   "tag": "CrewBattleNode559",
+   "name": "Technocyte Coda Concert",
+   "planet": "Earth Proxima",
+   "type": "Assassination",
+   "enemy": "Techrot",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode556",
+   "name": "Free Flight",
+   "planet": "Earth Proxima",
+   "type": "Free Flight",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode502",
+   "name": "Sover Strait",
+   "planet": "Earth Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode509",
+   "name": "Iota Temple",
+   "planet": "Earth Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode518",
+   "name": "Ogal Cluster",
+   "planet": "Earth Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode519",
+   "name": "Korm's Belt",
+   "planet": "Earth Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode522",
+   "name": "Bendar Cluster",
+   "planet": "Earth Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode511",
+   "name": "Beacon Shield Ring",
+   "planet": "Venus Proxima",
+   "type": "Volatile",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode513",
+   "name": "Vesper Strait",
+   "planet": "Venus Proxima",
+   "type": "Orphix",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode515",
+   "name": "Luckless Expanse",
+   "planet": "Venus Proxima",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode514",
+   "name": "Falling Glory",
+   "planet": "Venus Proxima",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode503",
+   "name": "Bifrost Echo",
+   "planet": "Venus Proxima",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode512",
+   "name": "Orvin-Haarc",
+   "planet": "Venus Proxima",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode557",
+   "name": "Kuva Lich Confrontation",
+   "planet": "Saturn Proxima",
+   "type": "Assassination",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode501",
+   "name": "Mordo Cluster",
+   "planet": "Saturn Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode534",
+   "name": "Lupal Pass",
+   "planet": "Saturn Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode533",
+   "name": "Nodo Gap",
+   "planet": "Saturn Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode535",
+   "name": "Vand Cluster",
+   "planet": "Saturn Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode530",
+   "name": "Kasio's Rest",
+   "planet": "Saturn Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode558",
+   "name": "Sister of Parvos Confrontation",
+   "planet": "Neptune Proxima",
+   "type": "Assassination",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode504",
+   "name": "Arva Vector",
+   "planet": "Neptune Proxima",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode516",
+   "name": "Nu-gua Mines",
+   "planet": "Neptune Proxima",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode523",
+   "name": "Mammon's Prospect",
+   "planet": "Neptune Proxima",
+   "type": "Orphix",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode525",
+   "name": "Brom Cluster",
+   "planet": "Neptune Proxima",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode521",
+   "name": "Enkidu Ice Drifts",
+   "planet": "Neptune Proxima",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode524",
+   "name": "Sovereign Grasp",
+   "planet": "Neptune Proxima",
+   "type": "Volatile",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode526",
+   "name": "Khufu Envoy",
+   "planet": "Pluto Proxima",
+   "type": "Orphix",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode527",
+   "name": "Seven Sirens",
+   "planet": "Pluto Proxima",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode528",
+   "name": "Obol Crossing",
+   "planet": "Pluto Proxima",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode531",
+   "name": "Fenton's Field",
+   "planet": "Pluto Proxima",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode529",
+   "name": "Profit Margin",
+   "planet": "Pluto Proxima",
+   "type": "Volatile",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode536",
+   "name": "Peregrine Axis",
+   "planet": "Pluto Proxima",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode550",
+   "name": "Nsu Grid",
+   "planet": "Veil Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode555",
+   "name": "R-9 Cloud",
+   "planet": "Veil Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode554",
+   "name": "H-2 Cloud",
+   "planet": "Veil Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode553",
+   "name": "Flexa",
+   "planet": "Veil Proxima",
+   "type": "Skirmish",
+   "enemy": "Grineer",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode538",
+   "name": "Calabash",
+   "planet": "Veil Proxima",
+   "type": "Exterminate",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode539",
+   "name": "Numina",
+   "planet": "Veil Proxima",
+   "type": "Volatile",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode540",
+   "name": "Arc Silver",
+   "planet": "Veil Proxima",
+   "type": "Defense",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode541",
+   "name": "Erato",
+   "planet": "Veil Proxima",
+   "type": "Orphix",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode542",
+   "name": "Lu-yan",
+   "planet": "Veil Proxima",
+   "type": "Survival",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode543",
+   "name": "Sabmir Cloud",
+   "planet": "Veil Proxima",
+   "type": "Spy",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "JadeShadows2HUB",
+   "name": "Pontis Tower",
+   "planet": "Uranus Proxima",
+   "type": "Hub",
+   "enemy": "Tenno",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode561",
+   "name": "Scoria's Angel",
+   "planet": "Uranus Proxima",
+   "type": "Skirmish + Assassinate",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  },
+  {
+   "tag": "CrewBattleNode560",
+   "name": "The Kuva Wytch",
+   "planet": "Uranus Proxima",
+   "type": "Skirmish + Assassinate",
+   "enemy": "Corpus",
+   "xp": 0,
+   "tracked": false
+  }
+ ]
+}

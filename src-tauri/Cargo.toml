@@ -1,0 +1,67 @@
+[package]
+name = "wf-companion"
+version = "0.1.0"
+description = "Lotus: a Warframe companion app"
+authors = ["Lotus contributors"]
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "wf_companion_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+memchr = "2.8.3"
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    # Riven overlay: find the game window, copy the screen, Windows' built-in OCR.
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_WinRT",
+    "Foundation",
+    "Foundation_Collections",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage_Streams",
+] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+zstd = "0.14.0"
+ureq = "3.4.2"
+
+
+# The memory scan must finish before the game frees the inventory text, which an
+# unoptimized build is too slow for (5.8 s vs 0.3 s per scan). Optimize dev builds too.
+[profile.dev]
+opt-level = 1
+# Incremental builds combined with opt-level > 0 repeatedly left stale objects behind on Windows,
+# failing to link with LNK1120 (unresolved `anon.*.llvm.*` symbols). Full rebuilds of this crate avoid it.
+incremental = false
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
