@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { friendlyError } from "$lib/errors";
   import { onMount } from "svelte";
 
   type Fissure = {
@@ -43,7 +44,7 @@
       fissures = await invoke<Fissure[]>("get_fissures");
       error = null;
     } catch (e) {
-      error = String(e);
+      error = friendlyError(e, "the Warframe world state");
     }
   }
 
@@ -118,7 +119,7 @@
   </div>
 
   {#if fissures === null}
-    <p class="muted">{error ? `Couldn't load fissures: ${error}` : "Loading fissures…"}</p>
+    <p class="muted">{error ? `Couldn't load fissures. ${error}` : "Loading fissures…"}</p>
   {:else}
     <div class="list">
       {#if !eras.length}

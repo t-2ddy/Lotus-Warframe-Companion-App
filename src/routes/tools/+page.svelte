@@ -2,6 +2,7 @@
   /** Tools: in-game helpers. Each one is off until switched on. */
   import { invoke } from "@tauri-apps/api/core";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { openWelcome } from "$lib/welcomeState.svelte";
   import { onMount } from "svelte";
   import RivenDataStatus from "$lib/RivenDataStatus.svelte";
   import { checklistHidden, setChecklistHidden, type ChecklistKind } from "$lib/checklistPrefs.svelte";
@@ -77,7 +78,10 @@
 
 <div class="page">
   <h1>Tools</h1>
-  <p class="muted">In-game helpers. Each one is off unless you switch it on.</p>
+  <p class="muted">
+    In-game helpers. Each one is off unless you switch it on. New here?
+    <button class="link" onclick={openWelcome}>Show the welcome screen</button>
+  </p>
 
   <section class="tool">
     <div class="head">
@@ -207,6 +211,16 @@
   .muted {
     color: var(--muted);
     margin: 0 0 20px;
+  }
+
+  .link {
+    all: unset;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .link:hover {
+    text-decoration: underline;
   }
 
   .mono {

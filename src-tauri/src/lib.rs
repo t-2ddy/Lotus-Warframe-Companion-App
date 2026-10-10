@@ -32,6 +32,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(overlay::shortcut_plugin())
+        // Reopens the main window at the size, position and maximized state it was closed with
+        // (first launch: 1350 × 720, centred). The overlay window places itself over the game.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_denylist(&[overlay::WINDOW])
+                .build(),
+        )
         .manage(Arc::new(pipeline::Shared::default()))
         // Item images: the page loads `http://wfimg.localhost/<imageName>` (see images.rs).
         .register_asynchronous_uri_scheme_protocol("wfimg", serve_image)

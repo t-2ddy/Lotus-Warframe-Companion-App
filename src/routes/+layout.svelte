@@ -8,6 +8,8 @@
   import House from "@lucide/svelte/icons/house";
   import Backpack from "@lucide/svelte/icons/backpack";
   import MaskIcon from "$lib/icons/MaskIcon.svelte";
+  import Welcome from "$lib/Welcome.svelte";
+  import { welcome } from "$lib/welcomeState.svelte";
   import Ducat from "$lib/icons/Ducat.svelte";
   import Riven from "$lib/icons/Riven.svelte";
   import Wrench from "@lucide/svelte/icons/wrench";
@@ -29,6 +31,8 @@
   ];
 
   let statusOpen = $state(false);
+  /** False while Windows reports no network: a banner explains why live data isn't updating. */
+  let online = $state(typeof navigator === "undefined" ? true : navigator.onLine);
 
   /** The riven overlay window shows only its page: no nav, no status, transparent. */
   const isOverlay = $derived(page.url.pathname.startsWith("/overlay"));
@@ -65,7 +69,7 @@
   }
 </script>
 
-<svelte:window onclick={closeOnOutside} />
+<svelte:window onclick={closeOnOutside} ononline={() => (online = true)} onoffline={() => (online = false)} />
 
 {#snippet navIcon(icon: Component | string, scale = 1)}
   {#if typeof icon === "string"}
@@ -157,9 +161,16 @@
         </button>
       </div>
     </header>
+    {#if !online}
+      <div class="offline" role="status">
+        No internet connection. Showing saved data; prices, fissures, arbitrations and riven listings update when
+        you're back online. Inventory capture still works.
+      </div>
+    {/if}
     <main class="content">
       {@render children()}
     </main>
+    {#if welcome.open}<Welcome />{/if}
   </div>
 </div>
 {/if}
@@ -352,6 +363,14 @@
   .win-btn.close:hover {
     background: #c42b1c;
     color: white;
+  }
+
+  .offline {
+    padding: 8px 20px;
+    font-size: 13px;
+    background: rgba(251, 191, 36, 0.12);
+    border-bottom: 1px solid rgba(251, 191, 36, 0.35);
+    color: var(--gold);
   }
 
   .content {

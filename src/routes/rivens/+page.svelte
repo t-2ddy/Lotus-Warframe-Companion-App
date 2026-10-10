@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { friendlyError } from "$lib/errors";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { imageUrl, markMissing } from "$lib/format";
@@ -63,7 +64,7 @@
         data = p;
         error = null;
       })
-      .catch((e) => (error = String(e)));
+      .catch((e) => (error = friendlyError(e, "the app")));
 
   onMount(() => {
     load();
@@ -188,7 +189,7 @@
 <RivenDataStatus compact />
 
 {#if !data}
-  <p class="muted">{error ? `Couldn't load rivens: ${error}` : "Loading…"}</p>
+  <p class="muted">{error ? `Couldn't load rivens. ${error}` : "Loading…"}</p>
 {:else if !data.rivens.length}
   <p class="muted">No unveiled rivens in the last capture.</p>
 {:else}

@@ -45,6 +45,7 @@ windows = { version = "0.62.2", features = [
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 zstd = "0.14.0"
 ureq = "3.4.2"
+tauri-plugin-window-state = "2"
 
 
 # The memory scan must finish before the game frees the inventory text, which an

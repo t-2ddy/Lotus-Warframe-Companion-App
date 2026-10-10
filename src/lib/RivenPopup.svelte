@@ -39,6 +39,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { friendlyError } from "$lib/errors";
   import { onMount } from "svelte";
   import BestStats from "$lib/BestStats.svelte";
 
@@ -82,7 +83,7 @@
     const wanted = riven.stats.filter((s) => s.good && s.wanted).map((s) => s.tag);
     invoke<Similar>("similar_rivens", { weapon: riven.compat, weaponName: riven.weapon, positives, negative, wanted })
       .then((r) => (similar = r))
-      .catch((e) => (error = String(e)));
+      .catch((e) => (error = friendlyError(e, "warframe.market")));
   });
 
   function onKey(e: KeyboardEvent) {
@@ -164,7 +165,7 @@
         <label class="toggle"><input type="checkbox" bind:checked={onlineOnly} /> Online sellers only</label>
       </div>
       {#if error}
-        <p class="hint">Couldn't load listings: {error}</p>
+        <p class="hint">Couldn't load listings. {error}</p>
       {:else if !similar}
         <p class="hint">Searching warframe.market…</p>
       {:else if !similar.total}

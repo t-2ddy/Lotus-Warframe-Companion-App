@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { friendlyError } from "$lib/errors";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { hideOnError, imageUrl, markMissing, time } from "$lib/format";
@@ -125,7 +126,7 @@
       data = await invoke<Data>("get_ducanator");
       loadError = null;
     } catch (e) {
-      loadError = String(e);
+      loadError = friendlyError(e, "the app");
     }
   }
 
@@ -293,7 +294,7 @@
   <a href="https://warframe.market/tools/ducats" target="_blank" rel="noreferrer">warframe.market</a>, previous day
   {#if data?.updatedAt}· updated {time(data.updatedAt)}{/if}
   {#if data?.fetching}· updating…{/if}
-  {#if data?.error}<span class="error">· couldn't update: {data.error}</span>{/if}
+  {#if data?.error}<span class="error">· couldn't update, showing the last saved prices. {friendlyError(data.error, "warframe.market")}</span>{/if}
 </p>
 
 {#if loadError}

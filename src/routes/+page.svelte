@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { friendlyError } from "$lib/errors";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { dateTime } from "$lib/format";
@@ -80,12 +81,16 @@
     return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
   };
 
+  let arbError = $state<string | null>(null);
+
   async function loadArbs() {
     const from = dayStart(Date.now());
     try {
       arbs = await invoke<Arb[]>("get_arbitrations", { fromMs: from, toMs: addDays(from, DAYS) });
-    } catch {
+      arbError = null;
+    } catch (e) {
       arbs = [];
+      arbError = friendlyError(e, "browse.wf");
     }
   }
 
@@ -239,7 +244,7 @@
       </div>
     </div>
     {#if !arbs.length}
-      <p class="muted">Loading the arbitration schedule…</p>
+      <p class="muted">{arbError ? `Couldn't load the arbitration schedule. ${arbError}` : "Loading the arbitration schedule…"}</p>
     {:else}
       <div class="arb-list" bind:this={listEl}>
         {#if !days.length}

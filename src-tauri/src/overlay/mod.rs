@@ -37,7 +37,7 @@ use events::{cycled_riven, is_confirm, ScreenEvent};
 use relics::{Candidate, RewardView};
 use screen::{GameWindow, Region};
 
-const WINDOW: &str = "riven-overlay";
+pub const WINDOW: &str = "riven-overlay";
 const SETTING: &str = "riven_overlay";
 const RELIC_SETTING: &str = "relic_overlay";
 /// Tools → Debug logging: write `overlay.log` and the `overlay-debug/` images (off by default).
