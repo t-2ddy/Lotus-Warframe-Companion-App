@@ -349,9 +349,27 @@ npm run tauri build     # NSIS installer (Lotus_<version>_x64-setup.exe) in src-
 **Checks:**
 
 ```sh
-cd src-tauri && cargo test --lib    # Rust tests: parsing, formulas, OCR on the screenshots in docs/
+cd src-tauri && cargo test --lib    # Rust tests (needs `npm run build` first: the app embeds the frontend)
 npm run check                       # Svelte / TypeScript check
 ```
+
+**Releasing a new version:**
+
+```sh
+npm run bump -- 0.2.0          # sets the version in package.json, Cargo.toml and the lock files
+git commit -am "Release v0.2.0"
+git tag v0.2.0 && git push && git push --tags
+```
+
+Pushing the tag runs the **Release** workflow (`.github/workflows/release.yml`). It builds the
+installer, signs the update, and makes a **draft** GitHub Release with `latest.json`. Publish the
+draft to release it. A tag with a `-` (`v0.2.0-beta.1`) is marked pre-release. Installed copies
+check `releases/latest/download/latest.json` at start-up and every 6 hours, and show an "Update
+and restart" bar. Updates must be signed with the project's updater key (the public half is in
+`tauri.conf.json`), so only official releases install.
+
+The **CI** workflow (`.github/workflows/ci.yml`) runs the Svelte check, the frontend build, the
+Rust tests and clippy on every push and pull request.
 
 **Regenerating bundled data:**
 

@@ -1,0 +1,57 @@
+# Builds the Windows installer when a version tag is pushed (v0.2.0, v0.2.0-beta.1) and makes a
+# draft GitHub Release with it, its update signature and latest.json (what installed copies check
+# for updates). Publish the draft to release it; a tag with a "-" (beta) is marked pre-release.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           the contents of the private updater key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm packages
+        run: npm ci
+
+      - name: Build and draft the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Lotus ${{ github.ref_name }}
+          releaseBody: |
+            **Lotus — Warframe companion** for Windows.
+
+            Download `Lotus_*_x64-setup.exe` below and run it. Windows SmartScreen may say it "protected your PC"
+            because the installer isn't code-signed yet: choose **More info → Run anyway**.
+
+            Already installed? Lotus updates itself: it shows an "Update and restart" bar at the top.
+
+            **Use at your own risk.** Unofficial community tool, not affiliated with Digital Extremes.
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: true

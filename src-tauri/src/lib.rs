@@ -31,6 +31,9 @@ use images::{ImageService, Served};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // App updates from GitHub Releases (signed; see tauri.conf.json → plugins.updater).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(overlay::shortcut_plugin())
         // Reopens the main window at the size, position and maximized state it was closed with
         // (first launch: 1350 × 720, centred). The overlay window places itself over the game.

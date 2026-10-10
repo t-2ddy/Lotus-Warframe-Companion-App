@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { openWelcome } from "$lib/welcomeState.svelte";
+  import { appUpdate, checkForUpdate, installUpdate } from "$lib/appUpdate.svelte";
   import { onMount } from "svelte";
   import RivenDataStatus from "$lib/RivenDataStatus.svelte";
   import { checklistHidden, setChecklistHidden, type ChecklistKind } from "$lib/checklistPrefs.svelte";
@@ -147,6 +148,27 @@
       <span class="muted small">Shows four rewards from one relic for 12 seconds, laid out like the reward screen.</span>
     </div>
     {#if relicError}<p class="error">{relicError}</p>{/if}
+  </section>
+
+  <section class="tool">
+    <div class="head">
+      <h2>App updates</h2>
+    </div>
+    <p>
+      Lotus checks GitHub for a new version when it starts and every 6 hours, and offers to update in a bar at the
+      top. Updates are signed, so only official releases install.
+    </p>
+    <div class="actions">
+      <button onclick={() => checkForUpdate(true)} disabled={appUpdate.checking || appUpdate.installing}>
+        {appUpdate.checking ? "Checking…" : "Check for updates"}
+      </button>
+      {#if appUpdate.available && !appUpdate.installing}
+        <button onclick={installUpdate}>Update to {appUpdate.available.version} and restart</button>
+      {/if}
+      <span class="muted small">
+        You have Lotus {appUpdate.current ?? "…"}{appUpdate.message ? ` · ${appUpdate.message}` : ""}
+      </span>
+    </div>
   </section>
 
   <section class="tool">

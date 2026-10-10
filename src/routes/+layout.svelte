@@ -10,6 +10,7 @@
   import MaskIcon from "$lib/icons/MaskIcon.svelte";
   import Welcome from "$lib/Welcome.svelte";
   import { welcome } from "$lib/welcomeState.svelte";
+  import { appUpdate, installUpdate, startUpdateChecks } from "$lib/appUpdate.svelte";
   import Ducat from "$lib/icons/Ducat.svelte";
   import Riven from "$lib/icons/Riven.svelte";
   import Wrench from "@lucide/svelte/icons/wrench";
@@ -44,11 +45,15 @@
   onMount(() => {
     if (page.url.pathname.startsWith("/overlay")) return;
     startStatus();
+    const stopUpdates = startUpdateChecks();
     const win = getCurrentWindow();
     const sync = () => win.isMaximized().then((m) => (maximized = m)).catch(() => {});
     sync();
     const off = win.onResized(sync);
-    return () => void off.then((f) => f());
+    return () => {
+      stopUpdates();
+      void off.then((f) => f());
+    };
   });
 
   const win = () => getCurrentWindow();
@@ -161,6 +166,19 @@
         </button>
       </div>
     </header>
+    {#if appUpdate.available && !appUpdate.dismissed}
+      <div class="update" role="status">
+        {#if appUpdate.installing}
+          Updating to Lotus {appUpdate.available.version}{appUpdate.progress !== null ? ` · ${appUpdate.progress}%` : "…"} Lotus
+          restarts when it's done.
+        {:else}
+          <span><b>Lotus {appUpdate.available.version}</b> is available{appUpdate.current ? ` (you have ${appUpdate.current})` : ""}.</span>
+          <a href="https://github.com/t-2ddy/Lotus-Warframe-Companion-App/releases/latest" target="_blank" rel="noreferrer">What's new</a>
+          <button class="update-now" onclick={installUpdate}>Update and restart</button>
+          <button class="update-later" onclick={() => (appUpdate.dismissed = true)}>Later</button>
+        {/if}
+      </div>
+    {/if}
     {#if !online}
       <div class="offline" role="status">
         No internet connection. Showing saved data; prices, fissures, arbitrations and riven listings update when
@@ -363,6 +381,42 @@
   .win-btn.close:hover {
     background: #c42b1c;
     color: white;
+  }
+
+  .update {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 8px 20px;
+    font-size: 13px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent);
+  }
+
+  .update a {
+    color: var(--text);
+  }
+
+  .update button {
+    font: inherit;
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+  }
+
+  .update-now {
+    margin-left: auto;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+  }
+
+  .update-later {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--muted);
   }
 
   .offline {
