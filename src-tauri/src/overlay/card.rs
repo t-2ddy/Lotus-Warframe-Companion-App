@@ -663,11 +663,12 @@ fn rebuild_tagged(
     rank: Option<u32>,
     tags: &[String],
 ) -> Result<Identified, String> {
-
     // Buff or curse: a curse goes against the stat's usual direction. Spliced traits without
-    // known numbers still count towards the buff/curse totals but aren't worked out.
+    // known numbers, and stats whose number couldn't be read, still count towards the buff/curse
+    // totals but aren't worked out.
     let mut lines = Vec::new();
     let mut pending = Vec::new(); // (card position, tag, is_buff)
+    let mut unread: Vec<Unread> = Vec::new();
     let mut buff_at = Vec::new(); // is_buff for each card stat, in card order
     for (i, (stat, tag)) in card.stats.iter().zip(tags).enumerate() {
         let Some(info) = rivens::stat_info(kind, tag) else {
@@ -679,30 +680,52 @@ fn rebuild_tagged(
         let raw = raw_value(stat, &info.label);
         // A curse goes against the stat's usual direction; a negative-only stat is always one.
         let is_buff = !rivens::curse_only(&info) && raw.signum() == info.value.signum();
+        buff_at.push(is_buff);
+        if damaged(stat, tag, &info.label) {
+            unread.push(Unread { at: Some(i), tag: tag.clone(), is_buff, info });
+            continue;
+        }
         let base = if is_buff { info.value } else { rivens::curse_base(&info) };
         lines.push((tag.clone(), raw, is_buff, base, display_step(stat, &info.label)));
-        buff_at.push(is_buff);
     }
-    let nb = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count();
-    let nc = lines.len() + pending.len() - nb;
+    // The riven's name lists every positive: one the card read missed (an icon can hide a
+    // whole line) is added from it.
+    let positives = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count() + unread.iter().filter(|u| u.is_buff).count();
+    let named = name_tags(kind, card.riven_name());
+    if named.len() > positives {
+        let missing: Vec<&String> = named.iter().filter(|t| !tags.contains(t)).collect();
+        if missing.len() >= named.len() - positives {
+            for tag in missing.into_iter().take(named.len() - positives) {
+                if let Some(info) = rivens::stat_info(kind, tag) {
+                    unread.push(Unread { at: None, tag: tag.clone(), is_buff: true, info });
+                }
+            }
+        }
+    }
+    let nb = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count() + unread.iter().filter(|u| u.is_buff).count();
+    let nc = lines.len() + pending.len() + unread.len() - nb;
     if nb < 2 || nc > 1 {
         return Err(format!("{nb} positives and {nc} negatives"));
     }
     const BUFF: [f64; 6] = [0.0, 1.0, 0.66000003, 0.5, 0.40000001, 0.34999999];
     const CURSE_BUFF: [f64; 6] = [0.0, 1.0, 0.33000001, 0.5, 1.25, 1.5];
     let atten = 1.5 * disposition * 10.0;
+    // A stat's full value (at the middle of its 90–110% range) at rank `r`.
+    let full = |base: f64, buff: bool, r: u32| {
+        let level = f64::from(r + 1);
+        if buff {
+            base * atten * 1.25f64.powi(nc as i32) * BUFF[nb.min(5)] * level
+        } else {
+            -base * atten * CURSE_BUFF[nb.min(5)] * BUFF[nc.min(5)] * level
+        }
+    };
     // Each stat's roll (0 = 90% of its full value, 1 = 110%), and how far that can be off
     // because the card rounds the number (x0.98 on a rank 0 riven is anywhere in ±0.01).
     let rolls = |r: u32| -> Vec<(f64, f64)> {
-        let level = f64::from(r + 1);
         lines
             .iter()
             .map(|(_, raw, buff, base, step)| {
-                let full = if *buff {
-                    base * atten * 1.25f64.powi(nc as i32) * BUFF[nb.min(5)] * level
-                } else {
-                    -base * atten * CURSE_BUFF[nb.min(5)] * BUFF[nc.min(5)] * level
-                };
+                let full = full(*base, *buff, r);
                 ((raw / full - 0.9) / 0.2, step / full.abs() / 0.2)
             })
             .collect()
@@ -725,6 +748,10 @@ fn rebuild_tagged(
         let entry = json!({"Tag": tag, "Value": 0});
         if *is_buff { buffs.push(entry) } else { curses.push(entry) }
     }
+    for u in &unread {
+        let entry = json!({"Tag": format!("{}{}", rivens::UNREAD_PREFIX, u.tag), "Value": 0});
+        if u.is_buff { buffs.push(entry) } else { curses.push(entry) }
+    }
     let mut fp = json!({"compat": compat, "lvl": rank, "buffs": buffs, "curses": curses});
     if let Some(m) = card.mastery {
         fp["lvlReq"] = json!(m);
@@ -739,10 +766,33 @@ fn rebuild_tagged(
     };
     let mut view = rivens::view_with(data, sheet, &owned, rank, Some(disposition)).ok_or("couldn't build the riven")?;
     view.name = card.riven_name().to_string(); // the game's name, as shown
-    if !pending.is_empty() {
-        add_pending(data, kind, &mut view, card, &pending, &buff_at);
-        // Graded again with the removed stats back in place (the sheet judges a negative Zoom
-        // by its tag); spliced traits still leave it ungraded.
+    if !pending.is_empty() || !unread.is_empty() {
+        // An unread stat's range at this rank, from its worst to its best roll.
+        let unread: Vec<(Option<usize>, rivens::StatView)> = unread
+            .iter()
+            .map(|u| {
+                let base = if u.is_buff { u.info.value } else { rivens::curse_base(&u.info) };
+                let at = |x: f64| rivens::stat_text(&u.tag, &u.info.label, full(base, u.is_buff, rank) * (0.9 + 0.2 * x));
+                let (worst, best) = if u.is_buff { (at(0.0), at(1.0)) } else { (at(1.0), at(0.0)) };
+                let view = rivens::StatView {
+                    tag: u.tag.clone(),
+                    text: rivens::label_name(&u.info.label),
+                    good: u.is_buff,
+                    quality: 0.0,
+                    letter: "?".into(),
+                    worst,
+                    best,
+                    wanted: None,
+                    pending: true,
+                    legacy: false,
+                    unread: true,
+                };
+                (u.at, view)
+            })
+            .collect();
+        add_pending(data, kind, &mut view, card, &pending, unread, &buff_at);
+        // Graded again with these back in place (the sheet judges a negative Zoom or a missed
+        // Toxin by its tag); spliced traits still leave it ungraded.
         if !view.grade_pending {
             rivens::apply_grade(&mut view, sheet);
         }
@@ -750,8 +800,37 @@ fn rebuild_tagged(
     Ok(Identified { view, rank_assumed })
 }
 
-/// Puts the not-yet-graded spliced traits back in their places on the card, as shown.
-fn add_pending(data: &RivenData, kind: &RivenType, view: &mut RivenView, card: &Card, pending: &[(usize, String, bool)], buff_at: &[bool]) {
+/// A stat whose number couldn't be read: `at` its place on the card, or `None` if the card read
+/// missed the whole line.
+struct Unread {
+    at: Option<usize>,
+    tag: String,
+    is_buff: bool,
+    info: rivens::StatInfo,
+}
+
+/// A number OCR damaged past using: a percentage read without its "%" ("+1 f Electricity" for
+/// "+1xx.x% Electricity", the digits lost with the icon), or a faction multiplier without its
+/// "x".
+fn damaged(stat: &CardStat, tag: &str, label: &str) -> bool {
+    if tag.contains("FactionDamage") {
+        return stat.unit != Unit::Times;
+    }
+    label.contains("|val|%") && stat.unit != Unit::Percent
+}
+
+/// Puts the stats that aren't worked out back in their places on the card: spliced and removed
+/// traits with the card's numbers, unread ones as "not read" (a missed positive goes after the
+/// other positives).
+fn add_pending(
+    data: &RivenData,
+    kind: &RivenType,
+    view: &mut RivenView,
+    card: &Card,
+    pending: &[(usize, String, bool)],
+    mut unread: Vec<(Option<usize>, rivens::StatView)>,
+    buff_at: &[bool],
+) {
     let (mut buffs, mut curses): (Vec<_>, Vec<_>) = std::mem::take(&mut view.stats).into_iter().partition(|s| s.good);
     buffs.reverse();
     curses.reverse();
@@ -781,12 +860,19 @@ fn add_pending(data: &RivenData, kind: &RivenType, view: &mut RivenView, card: &
                 wanted: None,
                 pending: true,
                 legacy: legacy.is_some(),
+                unread: false,
             });
+        } else if let Some(pos) = unread.iter().position(|(at, _)| *at == Some(i)) {
+            view.stats.push(unread.remove(pos).1);
         } else if let Some(s) = if buff_at[i] { buffs.pop() } else { curses.pop() } {
             view.stats.push(s);
         }
     }
     view.stats.extend(buffs.into_iter().rev().chain(curses.into_iter().rev()));
+    for (_, missed) in unread {
+        let first_curse = view.stats.iter().position(|s| !s.good).unwrap_or(view.stats.len());
+        view.stats.insert(if missed.good { first_curse } else { view.stats.len() }, missed);
+    }
     let graded: Vec<f64> = view.stats.iter().filter(|s| !s.pending).map(|s| s.quality).collect();
     view.perfectness = if graded.is_empty() { 0.0 } else { 100.0 * graded.iter().sum::<f64>() / graded.len() as f64 };
 }
@@ -1310,6 +1396,51 @@ mod slash_icon_tests {
         let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &c, Some(prime), None).unwrap();
         assert_eq!((r.view.rank, r.view.disposition), (8, 0.5));
         assert!(r.view.stats.iter().all(|s| s.letter != "?"));
+    }
+
+    #[test]
+    fn a_positive_the_card_read_missed_comes_from_the_name() {
+        // overlay.log 2026-10-10: "Laci-toxicron" names three positives, but no read had the
+        // Toxin line, so the card was worked out as 2 positives and nothing fit.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Hate Laci-toxicron / +7.3% Additional Combo / Count Chance / +19.5% Critical Chance / (x2 for Heavy Attacks) / -10.3% Critical Chance / for Slide Attack / MR 12 / 029 \\");
+        let hate = Some("/Lotus/Weapons/Tenno/Melee/Scythe/StalkerScytheWeapon");
+        let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &c, hate, None).unwrap();
+        assert_eq!(r.view.rank, 0);
+        let order: Vec<(&str, bool)> = r.view.stats.iter().map(|s| (s.tag.as_str(), s.unread)).collect();
+        assert_eq!(order, [
+            ("WeaponMeleeComboBonusOnHitMod", false),
+            ("WeaponCritChanceMod", false),
+            ("WeaponToxinDamageMod", true),
+            ("SlideAttackCritChanceMod", false),
+        ], "the missed positive goes after the others, before the curse");
+        let toxin = &r.view.stats[2];
+        assert_eq!((toxin.text.as_str(), toxin.good, toxin.letter.as_str()), ("Toxin", true, "?"));
+        assert!(toxin.worst.ends_with("% Toxin") && toxin.best.ends_with("% Toxin"), "{} {}", toxin.worst, toxin.best);
+        assert!(r.view.stats.iter().filter(|s| !s.unread).all(|s| s.letter != "?"));
+        // A whole card: nothing added.
+        let full = card("Torid Crita-acriata / +198.6% Critical Chance / +152.1% Critical Damage / +188.2% Damage / -90% Projectile Speed / MR 13 / 013");
+        let r = rebuild(d, &GradeSheet::default(), "LotusRifleRandomModRare", &full, Some("/Lotus/Weapons/ClanTech/Bio/BioWeapon"), None).unwrap();
+        assert!(r.view.stats.iter().all(|s| !s.unread) && r.view.stats.len() == 4);
+    }
+
+    #[test]
+    fn a_damaged_number_is_not_read() {
+        // riven_misfits.jsonl 2026-10-10: the Electricity icon took the digits and the "%" with
+        // it ("+1 f Electricity" for "+1xx.x%"), and a plain 1 fit nothing.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Nami Solo Locti- / visitio / +2.7 Range / +1 f Electricity / +206% Melee Damage / -114.9% Chance to Gain / Combo Count / MR8 / 0119 \\");
+        let nami = Some("/Lotus/Weapons/Tenno/Melee/Swords/CutlassAndPoignard/TennoCutlass");
+        let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &c, nami, None).unwrap();
+        assert_eq!(r.view.rank, 8);
+        let elec = &r.view.stats[1];
+        assert_eq!((elec.tag.as_str(), elec.text.as_str(), elec.unread), ("WeaponElectricityDamageMod", "Electricity", true));
+        // The range it has to be in at rank 8 on Nami Solo (disposition 1.43).
+        assert_eq!((elec.worst.as_str(), elec.best.as_str()), ("+108.6% Electricity", "+132.7% Electricity"));
+        assert_eq!(r.view.stats.iter().filter(|s| s.letter != "?").count(), 3);
+        assert!(!r.view.stats[3].good, "the curse is still the curse");
     }
 
     #[test]

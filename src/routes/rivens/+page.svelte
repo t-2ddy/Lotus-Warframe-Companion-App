@@ -22,6 +22,8 @@
     pending?: boolean;
     /** A stat this riven type can't roll any more (DE removed it): shown, not graded. */
     legacy?: boolean;
+    /** Its number couldn't be read off the card: shown with the range it's in, not graded. */
+    unread?: boolean;
   };
   type Riven = {
     id: string;
@@ -129,6 +131,7 @@
   }
 
   function statHelp(s: Stat) {
+    if (s.unread) return `Its number couldn't be read off the card: somewhere from ${s.worst} to ${s.best}`;
     if (s.legacy) return "No longer rolls on this riven type (DE removed it), so it isn't graded";
     if (s.pending) return "Spliced trait: its roll range isn't known yet, so it isn't graded (collecting data)";
     const role = s.good
@@ -240,7 +243,7 @@
                 {#if !s.good && s.wanted === true}<span class="harmless">harmless</span>{/if}
               </span>
               {#if s.pending}
-                <span class="collecting">{s.legacy ? "no longer rolls" : "collecting data"}</span>
+                <span class="collecting">{s.unread ? "not read" : s.legacy ? "no longer rolls" : "collecting data"}</span>
               {:else}
                 <span class="letter letter-{letterClass(s.letter)}">{s.letter}</span>
               {/if}

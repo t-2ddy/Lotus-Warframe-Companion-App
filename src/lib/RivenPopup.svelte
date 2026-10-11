@@ -14,6 +14,8 @@
     pending?: boolean;
     /** A stat this riven type can't roll any more (DE removed it): shown, not graded. */
     legacy?: boolean;
+    /** Its number couldn't be read off the card: shown with the range it's in, not graded. */
+    unread?: boolean;
   };
 
   export type RivenInfo = {
@@ -142,7 +144,11 @@
               </td>
               {#if s.pending}
                 <td colspan="3" class="pending">
-                  {s.legacy ? "No longer rolls: DE removed it from this riven type" : "Collecting data: spliced or new trait, range not known yet"}
+                  {s.unread
+                    ? `Number not read: somewhere from ${s.worst} to ${s.best}`
+                    : s.legacy
+                      ? "No longer rolls: DE removed it from this riven type"
+                      : "Collecting data: spliced or new trait, range not known yet"}
                 </td>
                 <td><span class="letter letter-p">?</span></td>
               {:else}

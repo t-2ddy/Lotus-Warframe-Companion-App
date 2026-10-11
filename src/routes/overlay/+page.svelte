@@ -238,7 +238,9 @@
               <li class:good={s.good} class:bad={!s.good} class:wanted={s.good && s.wanted === true}>
                 <span class="stext">{s.text}</span>
                 {#if s.pending}
-                  {#if s.legacy}
+                  {#if s.unread}
+                    <span class="pending" title="Its number couldn't be read off the card: somewhere from {s.worst} to {s.best}">not read</span>
+                  {:else if s.legacy}
                     <span class="pending" title="No longer rolls on this riven type (DE removed it), so it isn't graded">no longer rolls</span>
                   {:else}
                     <span class="pending" title="Spliced or new trait: its roll range isn't known yet, so it isn't graded">collecting data</span>

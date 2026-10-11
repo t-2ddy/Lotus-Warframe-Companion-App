@@ -223,6 +223,10 @@ pub const PENDING_PREFIX: &str = "Pending:";
 /// A stat read off a card that this riven type can't roll any more (or never could), kept as
 /// read: `Legacy:WeaponZoomFovMod` when another type still rolls it, `Legacy:<label>` if not.
 pub const LEGACY_PREFIX: &str = "Legacy:";
+/// A stat on a riven read off a card whose number couldn't be read (`Unread:WeaponToxinDamageMod`):
+/// a damaged number, or a positive the riven's name lists but the card read missed. Put back by
+/// the overlay as "not read".
+pub const UNREAD_PREFIX: &str = "Unread:";
 
 /// A stat this riven type can no longer roll: DE removes stats from types over time (negative
 /// Impact on older weapons' rivens, Zoom and Projectile Speed on shotgun rivens), and rivens
@@ -282,7 +286,7 @@ pub fn stat_info(kind: &RivenType, tag: &str) -> Option<StatInfo> {
 /// A spliced trait, or one this riven type's data doesn't have: a combined element, a pending
 /// trait read off a card, or an unknown tag on an owned riven (`WeaponStatusDamage`).
 pub fn is_spliced(data: &RivenData, kind: &RivenType, tag: &str) -> bool {
-    if tag.starts_with(LEGACY_PREFIX) || legacy_stat(data, kind, tag).is_some() {
+    if tag.starts_with(LEGACY_PREFIX) || tag.starts_with(UNREAD_PREFIX) || legacy_stat(data, kind, tag).is_some() {
         return false;
     }
     tag.starts_with(PENDING_PREFIX) || spliced_element(tag).is_some() || !kind.stats.contains_key(tag)
@@ -311,7 +315,7 @@ fn is_faction(tag: &str) -> bool {
 }
 
 /// The stat line as the game words it: `+148.5% Critical Chance`, `x1.45 Damage to Corpus`.
-fn stat_text(tag: &str, label: &str, value: f64) -> String {
+pub(crate) fn stat_text(tag: &str, label: &str, value: f64) -> String {
     let number = if is_faction(tag) {
         format!("x{:.2}", 1.0 + value)
     } else {
@@ -347,6 +351,9 @@ pub struct StatView {
     /// A stat this riven type can't roll any more (see [`legacy_stat`]): shown, not graded
     /// ("no longer rolls"). Always `pending` too.
     pub legacy: bool,
+    /// Its number couldn't be read off the card ("not read"; `worst`/`best` give the range it's
+    /// in). Always `pending` too.
+    pub unread: bool,
 }
 
 /// Roll letter, as in warframe-riven-info's `floatToGrade`: the roll mapped onto −10…+10.
@@ -523,6 +530,7 @@ fn stats(data: &RivenData, kind: &RivenType, fp: &Fingerprint, disposition: f64,
             wanted: None,
             pending: false,
             legacy: false,
+            unread: false,
         }
     };
     // A trait without numbers (a spliced one the data doesn't have): shown by name, ungraded
@@ -531,7 +539,7 @@ fn stats(data: &RivenData, kind: &RivenType, fp: &Fingerprint, disposition: f64,
     // A stat the type can't roll any more: shown by name, ungraded ("no longer rolls"); its
     // numbers for this type aren't known.
     let unknown = |out: &mut Vec<StatView>, tag: &str, good: bool| {
-        if !tag.starts_with(PENDING_PREFIX) && !tag.starts_with(LEGACY_PREFIX) {
+        if !tag.starts_with(PENDING_PREFIX) && !tag.starts_with(LEGACY_PREFIX) && !tag.starts_with(UNREAD_PREFIX) {
             let legacy = legacy_stat(data, kind, tag);
             out.push(StatView {
                 tag: tag.to_string(),
@@ -544,6 +552,7 @@ fn stats(data: &RivenData, kind: &RivenType, fp: &Fingerprint, disposition: f64,
                 wanted: None,
                 pending: true,
                 legacy: legacy.is_some(),
+                unread: false,
             });
         }
     };
