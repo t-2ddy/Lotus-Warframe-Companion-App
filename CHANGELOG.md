@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-10-10
+
 ### Changed
 - Riven overlay: each card is read four times at once (as shown, and three cleaned-up
   black-on-white copies) and every number and label takes the majority answer, so one bad read
@@ -94,7 +96,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/releases/tag/v0.1.0
