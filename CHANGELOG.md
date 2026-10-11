@@ -24,6 +24,24 @@ it's 0.x, anything may still change.
 - Rivens: "Chance to Gain Combo Count" (melee, negative only) is always the negative. A
   "-12.4%" roll was counted as a positive, so cards with it didn't work out, and owned rivens
   showed it as "+12.4%".
+- Riven overlay: the reroll screen's current riven shows as soon as the screen opens, like a chat
+  riven, instead of after the game's log catches up (often several seconds).
+- Riven overlay: only shows for chat links and on the reroll screen, never on the mod screen's
+  riven list (its riven cards were taken for a chat riven). A chat link opened from the mod
+  screen still gets it.
+- Riven overlay: on the reroll screen the new roll shows as soon as it's on screen, and after
+  choosing a roll the overlay drops straight back to one panel for the kept riven. Both used to
+  wait for the game's log (seconds late); the screen's CYCLE FOR / CONFIRM button now says when
+  a cycle or a confirm happened. That includes having too little Kuva for the next cycle ("INSUFFICIENT
+  KUVA" instead of "CYCLE FOR"), and unrelated dialogs in the log no longer keep the overlay up.
+- Riven overlay: backing out of the reroll screen to the riven list hides the overlay within
+  about half a second (it watches the screen's CYCLE/CONFIRM button instead of re-reading the
+  card every half second).
+- Riven overlay: a stat whose number OCR can't read no longer stops the riven being graded. A
+  damaged number ("+1 f Electricity", the icon took the digits and the "%") or a positive the
+  card read missed entirely (the riven's name lists every positive) is shown as "not read" with
+  the range its number must be in, and the rest of the riven is graded. Chat cards are read
+  again first in case a cleaner read comes through.
 - Rivens: a stat the riven's type can't roll any more (DE removed it, e.g. Zoom on shotgun
   rivens) no longer stops the riven being read. It's shown with its number, marked "no longer
   rolls" and left ungraded; the rest of the riven is graded as usual.

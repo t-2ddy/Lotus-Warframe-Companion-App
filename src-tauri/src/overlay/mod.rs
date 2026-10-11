@@ -69,6 +69,13 @@ const INSPECT_CARD: Region = Region { x: 0.425, y: 0.41, w: 0.15, h: 0.24 };
 const REROLL_CENTRE: Region = Region { x: 0.425, y: 0.570, w: 0.15, h: 0.230 };
 const REROLL_LEFT: Region = Region { x: 0.248, y: 0.622, w: 0.135, h: 0.145 };
 const REROLL_RIGHT: Region = Region { x: 0.622, y: 0.603, w: 0.135, h: 0.165 };
+/// The screen's title, top left: "INVENTORY/MODS" on the mod screen (riven list and reroll
+/// screen), "ITEM DETAILS" for a chat link.
+const SCREEN_HEADER: Region = Region { x: 0.03, y: 0.015, w: 0.30, h: 0.07 };
+/// The reroll screen's button under the cards: "CYCLE FOR 7,000" before a cycle, "CONFIRM" after
+/// (text at y 0.884, x 0.446–0.526 on the screenshots). Tells the reroll screen apart from other
+/// screens with a riven card in the middle.
+const REROLL_BUTTONS: Region = Region { x: 0.42, y: 0.865, w: 0.16, h: 0.05 };
 /// The chat-link screen's "Fits in" box (bottom right): the weapon, variant included, the card's
 /// numbers are for. Its name is at y 0.85–0.88; the area starts higher in case it wraps.
 const FITS_IN: Region = Region { x: 0.853, y: 0.80, w: 0.10, h: 0.09 };
@@ -281,6 +288,14 @@ struct Controller {
     /// Chat-link rivens: the lilac signature of the card last read, reads in a row with no card,
     /// and when to look next.
     watch_sig: Option<Vec<u8>>,
+    /// The reroll card area's last look: its lilac signature and when its button was read, so
+    /// the button is OCR'd again only when the card changes (or a second later).
+    reroll_look: Option<(Vec<u8>, Instant)>,
+    next_reroll_look: Instant,
+    /// Cycles and confirms seen on the reroll screen (its button) that the log hasn't caught up
+    /// with yet, so its late lines don't redo them.
+    screen_cycles: u32,
+    screen_confirms: u32,
     watch_misses: u32,
     next_watch: Instant,
     /// Riven type from the latest `PopulateInfo` line (the log lags, so it may come after the card).
@@ -306,6 +321,18 @@ struct Controller {
     /// A real reward screen is up (its open line was logged). The relic picker between endless
     /// rounds logs a close line without an open one.
     reward_screen_up: bool,
+}
+
+/// The reroll screen's button before a cycle: "CYCLE FOR 7,000", or with too little Kuva
+/// "INSUFFICIENT KUVA (3,500 NEEDED)" (often read as "SUFFICIENT … NEEDE").
+fn before_cycle(button: &str) -> bool {
+    button.contains("CYCLE") || button.contains("SUFFICIENT") || button.contains("NEEDE")
+}
+
+/// The screen title read as the mod screen's ("INVENTORY/MODS", read as "EINVENTORY/MODS").
+fn is_mod_header(lines: &[String]) -> bool {
+    let text = lines.join(" ").to_uppercase();
+    text.contains("INVENT") || text.contains("/MODS")
 }
 
 fn region_name(r: Region) -> &'static str {
@@ -370,6 +397,10 @@ pub fn start(app: &AppHandle, shared: Arc<Shared>) {
             shortcut_registered: false,
             last_text: std::collections::HashMap::new(),
             watch_sig: None,
+            reroll_look: None,
+            next_reroll_look: Instant::now(),
+            screen_cycles: 0,
+            screen_confirms: 0,
             watch_misses: 0,
             next_watch: Instant::now(),
             log_type: None,
@@ -448,6 +479,12 @@ impl Controller {
         if self.session.is_some() && Instant::now() >= self.next_action {
             self.step();
         }
+        // The reroll screen, from the screen: the log's line for it often comes seconds late.
+        let idle = ENABLED.load(Ordering::Relaxed) && matches!(self.session, None | Some(Session::Inspect { .. }));
+        if idle && Instant::now() >= self.next_reroll_look {
+            self.next_reroll_look = Instant::now() + Duration::from_millis(250);
+            self.watch_reroll();
+        }
         let watching = ENABLED.load(Ordering::Relaxed)
             && matches!(self.session, None | Some(Session::Inspect { .. }));
         if watching && Instant::now() >= self.next_watch {
@@ -480,6 +517,16 @@ impl Controller {
         if self.watch_sig.as_ref().is_some_and(|s| screen::signatures_match(s, &sig)) {
             self.watch_misses = 0;
             return; // same card as last read
+        }
+        // The mod screen (its riven list, a card hovered there, the reroll screen) has riven cards
+        // here too, but only chat links get this overlay. A chat link opened from the mod screen
+        // covers its header with ITEM DETAILS, so that still works.
+        if self.mod_screen_header() {
+            self.watch_sig = Some(sig); // look again when the cards change
+            if matches!(self.session, Some(Session::Inspect { .. })) {
+                self.end("mod screen");
+            }
+            return;
         }
         let info = format!("{w}x{h} at {x},{y}; game {}x{}", game.width, game.height);
         let Some(card) = self.ocr("inspect", &shot, &info) else {
@@ -514,6 +561,69 @@ impl Controller {
         } else {
             self.watch_sig = None;
         }
+    }
+
+    /// Starts the reroll session as soon as the reroll screen is up (a riven card where the
+    /// screen centres it, and its "CYCLE FOR" button), instead of waiting for the log.
+    fn watch_reroll(&mut self) {
+        let Some(game) = self.game() else { return };
+        let front = screen::foreground();
+        if front != game.hwnd && front != self.overlay_hwnd() {
+            return;
+        }
+        let (x, y, w, h) = REROLL_CENTRE.on(&game);
+        let Some(shot) = screen::grab(x, y, w, h) else { return };
+        let Some(sig) = screen::card_signature(&shot) else {
+            self.reroll_look = None;
+            return;
+        };
+        // The same card as last look: read its button again only after a second (it may have
+        // been fading in).
+        if self.reroll_look.as_ref().is_some_and(|(s, at)| screen::signatures_match(s, &sig) && at.elapsed() < Duration::from_secs(1)) {
+            return;
+        }
+        self.reroll_look = Some((sig, Instant::now()));
+        // Only before a cycle: after one ("CONFIRM") the log's cycle line says which card is old.
+        if !self.reroll_buttons().is_some_and(|t| before_cycle(&t)) {
+            return;
+        }
+        olog!("reroll screen seen");
+        self.start_reroll(Duration::ZERO);
+    }
+
+    /// The mod screen's "INVENTORY/MODS" header is showing (read the same on every mod screen;
+    /// the chat link's ITEM DETAILS header reads unreliably, so this is what's checked).
+    fn mod_screen_header(&mut self) -> bool {
+        let Some(game) = self.game() else { return false };
+        let (x, y, w, h) = SCREEN_HEADER.on(&game);
+        let Some(shot) = screen::grab(x, y, w, h) else { return false };
+        let info = format!("{w}x{h} at {x},{y}; game {}x{}", game.width, game.height);
+        self.ocr_lines("header", &shot, &info).is_some_and(|lines| is_mod_header(&lines))
+    }
+
+    /// The text on the reroll screen's button area, upper case ("CYCLE FOR 7,000", "CONFIRM"),
+    /// or empty if there's none; `None` if the game or the screen copy isn't there.
+    fn reroll_buttons(&mut self) -> Option<String> {
+        let game = self.game()?;
+        let (x, y, w, h) = REROLL_BUTTONS.on(&game);
+        let shot = screen::grab(x, y, w, h)?;
+        let info = format!("{w}x{h} at {x},{y}; game {}x{}", game.width, game.height);
+        self.ocr_lines("reroll-buttons", &shot, &info).map(|lines| lines.join(" ").to_uppercase())
+    }
+
+    /// A reroll session reading the current riven `after` from now.
+    fn start_reroll(&mut self, after: Duration) {
+        (self.screen_cycles, self.screen_confirms) = (0, 0);
+        self.session = Some(Session::Reroll {
+            weapon: self.recent_weapon(),
+            riven_type: None,
+            old: None,
+            new: None,
+            step: RerollStep::ReadingOld { attempts: 0 },
+        });
+        self.watch_sig = None;
+        self.after(after);
+        self.publish();
     }
 
     /// No card in the inspect area: hide the chat-riven panel after two looks in a row.
@@ -576,7 +686,10 @@ impl Controller {
         let weapon_kind = card::weapon_path(&data, card, weapon.as_deref()).is_some_and(|p| data.kind_of(&p).is_some());
         let wait = !weapon_kind && seen.elapsed() < WAIT_FOR_LOG;
         let mut panel = self.identify(card, &types, weapon.as_deref(), None, "left", "Riven", wait);
-        if self.settling && panel.status != "ready" {
+        // A stat whose number wasn't read, while the card is still settling: read it again
+        // before settling for "not read".
+        let unread = panel.riven.as_ref().is_some_and(|v| v.stats.iter().any(|s| s.unread));
+        if self.settling && (panel.status != "ready" || unread) {
             // Likely a read of the card fading in: say "reading" while it's read again.
             panel.status = "reading";
             panel.message = None;
@@ -699,16 +812,22 @@ impl Controller {
                 self.next_watch = Instant::now();
             }
             ScreenEvent::RerollOpened if enabled => {
+                // Usually seen on screen already: keep that session, and if it had no weapon
+                // yet, read the current riven again with the logged one (its variant).
+                let logged = self.recent_weapon();
+                if let Some(Session::Reroll { weapon, new, step, .. }) = &mut self.session {
+                    olog!("reroll screen opened (log)");
+                    if weapon.is_none() && logged.is_some() {
+                        *weapon = logged;
+                        if new.is_none() {
+                            *step = RerollStep::ReadingOld { attempts: 0 };
+                            self.next_action = Instant::now();
+                        }
+                    }
+                    return;
+                }
                 olog!("reroll screen opened");
-                self.session = Some(Session::Reroll {
-                    weapon: self.recent_weapon(),
-                    riven_type: None,
-                    old: None,
-                    new: None,
-                    step: RerollStep::ReadingOld { attempts: 0 },
-                });
-                self.after(Duration::from_millis(600));
-                self.publish();
+                self.start_reroll(Duration::from_millis(600));
             }
             ScreenEvent::ModScreenClosed => {
                 if matches!(self.session, Some(Session::Reroll { .. })) {
@@ -786,6 +905,10 @@ impl Controller {
                 if let Some(name) = cycled_riven(&text) {
                     self.on_cycle(name.to_string(), enabled);
                 } else if is_confirm(&text) {
+                    if self.screen_confirms > 0 {
+                        self.screen_confirms -= 1; // already seen on screen
+                        return;
+                    }
                     if let Some(Session::Reroll { step, .. }) = &mut self.session {
                         *step = RerollStep::ReadingKept { attempts: 0 };
                         self.next_action = Instant::now() + Duration::from_millis(900);
@@ -810,6 +933,7 @@ impl Controller {
             });
         }
         let own = self.lookup_own_by_title(&title);
+        let seen = self.screen_cycles > 0;
         let Some(Session::Reroll { old, new, step, riven_type, .. }) = &mut self.session else { return };
         let stale = old.as_ref().is_none_or(|o| card::norm(&o.card.title) != card::norm(&title));
         if stale {
@@ -817,6 +941,15 @@ impl Controller {
                 *riven_type = Some(kind);
                 *old = Some(found);
             }
+        }
+        if seen {
+            // The screen showed this cycle already and the new roll is read or being read: only
+            // the old riven (named in the dialog) was checked.
+            self.screen_cycles -= 1;
+            if stale {
+                self.publish();
+            }
+            return;
         }
         *new = None;
         *step = RerollStep::ReadingNew { attempts: 0 };
@@ -1103,9 +1236,16 @@ impl Controller {
                     Some(card) => {
                         let types = self.reroll_types(&card, riven_type.as_deref(), weapon.as_deref());
                         let panel = self.identify(&card, &types, weapon.as_deref(), rank, "right", "New roll", false);
-                        olog!("reroll: new {} ({})", card.title, panel.status);
-                        new = Some(Found { card, panel });
-                        (RerollStep::Watching { misses: 0 }, true)
+                        // Read straight after the cycle, the card may still be fading in: take it
+                        // once it's whole and works out (or after a few tries).
+                        let whole = card.mastery.is_some() && card.lost_numbers == 0 && panel.status == "ready";
+                        if !whole && attempts < 8 {
+                            (RerollStep::ReadingNew { attempts: attempts + 1 }, false)
+                        } else {
+                            olog!("reroll: new {} ({})", card.title, panel.status);
+                            new = Some(Found { card, panel });
+                            (RerollStep::Watching { misses: 0 }, true)
+                        }
                     }
                     None if attempts >= 20 => {
                         let panel = Panel::failed("right", "New roll", "Couldn't read the new roll");
@@ -1132,18 +1272,40 @@ impl Controller {
                 None => (RerollStep::ReadingKept { attempts: attempts + 1 }, false),
             },
             RerollStep::Watching { misses } => {
-                // Backing out to the riven list isn't logged: end when no card is on screen.
-                if self.read(REROLL_CENTRE).is_some() {
+                // The reroll screen's button, checked often (one small read), says what happened
+                // seconds before the log does: CYCLE FOR → CONFIRM, a cycle went through and the
+                // new roll is up; CONFIRM → CYCLE FOR, a roll was chosen.
+                let buttons = self.reroll_buttons();
+                let cycle = buttons.as_deref().is_some_and(before_cycle);
+                let confirm = buttons.as_deref().is_some_and(|t| t.contains("CONFIRM"));
+                if confirm && new.is_none() && old.is_some() {
+                    olog!("reroll: cycle seen on screen");
+                    self.screen_cycles += 1;
+                    self.after(Duration::ZERO);
+                    return (Some(Session::Reroll { weapon, riven_type, old, new, step: RerollStep::ReadingNew { attempts: 0 } }), false);
+                }
+                if cycle && new.is_some() {
+                    olog!("reroll: confirm seen on screen");
+                    self.screen_confirms += 1;
+                    self.after(Duration::ZERO);
+                    return (Some(Session::Reroll { weapon, riven_type, old, new, step: RerollStep::ReadingKept { attempts: 0 } }), false);
+                }
+                // Backing out to the riven list isn't logged: end when the button is gone. A
+                // cycle or confirm dialog may cover it, so not while the log says one is waiting
+                // (other dialogs the log mentions, like "QuickMatchPleaseWait", don't count).
+                let up = buttons.is_none() || cycle || confirm;
+                let dialog = self.last_dialog.as_deref().is_some_and(|t| cycled_riven(t).is_some() || is_confirm(t));
+                if up || dialog {
                     (RerollStep::Watching { misses: 0 }, false)
                 } else if misses + 1 >= 3 {
-                    self.after(Duration::from_millis(500));
+                    self.after(Duration::from_millis(300));
                     return (None, true);
                 } else {
                     (RerollStep::Watching { misses: misses + 1 }, false)
                 }
             }
         };
-        let wait = if matches!(next, RerollStep::Watching { .. }) { 500 } else { 250 };
+        let wait = if matches!(next, RerollStep::Watching { .. }) { 200 } else { 250 };
         self.after(Duration::from_millis(wait));
         (Some(Session::Reroll { weapon, riven_type, old, new, step: next }), changed)
     }
@@ -1631,6 +1793,72 @@ mod screenshot_tests {
         let (x, y, w, h) = region.on(&game);
         let reads = read_variants(&screen::ocr_variants(&screen::crop(img, x, y, w, h)));
         card::consensus(&reads.into_iter().filter_map(|r| parse_card(&r.unwrap())).collect::<Vec<_>>())
+    }
+
+    /// overlay.log 2026-10-10: with too little Kuva the button after a confirm said
+    /// "INSUFFICIENT KUVA", so the confirm wasn't seen and the new roll's panel stayed 17 s.
+    #[test]
+    fn reroll_buttons_before_a_cycle() {
+        for read in ["CYCLE FOR \u{e0cc}3,500", "CYCLE -3,500", "SUFFICIENT / (3,500 NEEDE", "SUFFICIENT NEEDE", "(3,500 NEEDE"] {
+            assert!(before_cycle(read), "{read}");
+        }
+        for read in ["CONFIRM", "", "QUICK SELECT FILTER EXIT"] {
+            assert!(!before_cycle(read), "{read}");
+        }
+        // Only the reroll's own dialogs keep the overlay up while the button is covered.
+        assert!(cycled_riven("Are you sure you want to cycle Furis Geli-fevatox for \u{e0cc}3,500?").is_some());
+        assert!(is_confirm("Cycle Riven into current selection?"));
+        let other = "/Lotus/Language/Menu/NavBar_QuickMatchPleaseWait";
+        assert!(cycled_riven(other).is_none() && !is_confirm(other));
+    }
+
+    /// The overlay's screens told apart (2560x1440 screenshots): the mod screen's header on its
+    /// riven list and the reroll screen (no chat overlay there), not on chat links; the reroll
+    /// button only on the reroll screen.
+    #[test]
+    fn screens_are_told_apart() {
+        let read = |img: &screen::Image, r: Region| {
+            let game = GameWindow { hwnd: 0, x: 0, y: 0, width: img.width as i32, height: img.height as i32 };
+            let (x, y, w, h) = r.on(&game);
+            ocr::read_lines(&screen::upscale2(&screen::crop(img, x, y, w, h))).unwrap()
+        };
+        for (name, mod_screen, cycle) in [
+            ("modInventory1Rivens.png", true, false),
+            ("reroll (1).png", true, true),
+            ("reroll (2).png", true, false),
+            ("inspectRiven.png", false, false),
+            ("rivenTool/error1.png", false, false),
+            ("rivenTool/error2.png", false, false),
+        ] {
+            let Some(img) = shot(name) else { continue };
+            assert_eq!(is_mod_header(&read(&img, SCREEN_HEADER)), mod_screen, "{name} header");
+            assert_eq!(read(&img, REROLL_BUTTONS).join(" ").to_uppercase().contains("CYCLE"), cycle, "{name} button");
+        }
+    }
+
+    /// The reroll screen is told apart by its button: "CYCLE FOR" before a cycle only.
+    #[test]
+    fn reroll_button_marks_the_reroll_screen() {
+        let button = |img: &screen::Image| {
+            let game = GameWindow { hwnd: 0, x: 0, y: 0, width: img.width as i32, height: img.height as i32 };
+            let (x, y, w, h) = REROLL_BUTTONS.on(&game);
+            ocr::read_lines(&screen::upscale2(&screen::crop(img, x, y, w, h))).unwrap().join(" ").to_uppercase()
+        };
+        let card_there = |img: &screen::Image| {
+            let game = GameWindow { hwnd: 0, x: 0, y: 0, width: img.width as i32, height: img.height as i32 };
+            let (x, y, w, h) = REROLL_CENTRE.on(&game);
+            screen::card_signature(&screen::crop(img, x, y, w, h)).is_some()
+        };
+        if let Some(img) = shot("reroll (1).png") {
+            assert!(card_there(&img));
+            assert!(button(&img).contains("CYCLE"), "{}", button(&img));
+        }
+        if let Some(img) = shot("reroll (2).png") {
+            assert!(!button(&img).contains("CYCLE") && button(&img).contains("CONFIRM"), "{}", button(&img));
+        }
+        if let Some(img) = shot("inspectRiven.png") {
+            assert!(!button(&img).contains("CYCLE"), "{}", button(&img));
+        }
     }
 
     /// The lilac check spots riven cards and ignores the rest of the screen.
