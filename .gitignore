@@ -22,3 +22,6 @@ docs/alecaExamples/
 # and logs).
 docs/milestones/
 docs/plans/
+
+# Local test builds (cargo --target-dir ../target/tools)
+/target

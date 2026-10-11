@@ -22,6 +22,7 @@ That artwork isn't covered by Lotus's MIT licence. Don't use it in anything sold
 |---|---|---|
 | `src-tauri/data/nodes.json` | [Warframe wiki](https://wiki.warframe.com) `Module:Missions/data`, reshaped by `scripts/gen_nodes.py` | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/): this file is shared under the same licence, with this attribution |
 | `src-tauri/data/rivens.json` | [Warframe Public Export Plus](https://github.com/calamity-inc/warframe-public-export-plus) by calamity-inc, reshaped by `scripts/gen_rivens.py` | The source project's terms |
+| Riven dispositions in `src-tauri/data/rivens.json` | [Warframe wiki](https://wiki.warframe.com) `Module:Weapons/data`, read by `scripts/gen_rivens.py` (and by the app when it updates its riven data) | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/): these values are shared under the same licence, with this attribution |
 | Riven formulas in `src-tauri/src/rivens.rs` | Ported from [warframe-riven-info](https://github.com/calamity-inc/warframe-riven-info) by calamity-inc | The source project's terms |
 | Daily and weekly tasks in `src/lib/Checklist.svelte` | [TipsyContent's Warframe checklist](https://tipsycontent.com/warframe/checklist) | Used with credit, for a community project |
 

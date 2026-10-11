@@ -6,8 +6,13 @@
 //! after a riven card that doesn't fit (at most hourly), and from the Tools page. Each file is
 //! only downloaded again when its ETag changed. The rebuilt data is cached in
 //! `<app data>/riven-data/rivens.json` and used when it's at least as new as the bundled copy.
+//!
+//! Dispositions change on DE's servers every few months without the game files (and so the
+//! export) changing. The Warframe wiki's weapon modules (`Module:Weapons/data/*`, CC BY-SA 3.0)
+//! are updated with each change, so their values replace the export's. They're downloaded at
+//! every check; the last good copy is kept in `riven-data/wiki-dispositions.json`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -21,8 +26,11 @@ use crate::rivens::{self, RivenData};
 
 const BASE_URL: &str = "https://cdn.jsdelivr.net/gh/calamity-inc/warframe-public-export-plus@senpai/";
 const FILES: [&str; 3] = ["ExportUpgrades.json", "ExportWeapons.json", "dict.en.json"];
-const SOURCE: &str =
-    "Warframe Public Export Plus (calamity-inc/warframe-public-export-plus); formulas from calamity-inc/warframe-riven-info";
+const SOURCE: &str = "Warframe Public Export Plus (calamity-inc/warframe-public-export-plus); dispositions from the Warframe wiki (Module:Weapons/data, CC BY-SA 3.0); formulas from calamity-inc/warframe-riven-info";
+/// The wiki's weapon modules with riven weapons.
+const WIKI_URL: &str = "https://wiki.warframe.com/w/Module:Weapons/data/";
+const WIKI_PAGES: [&str; 6] = ["primary", "secondary", "melee", "archwing", "companion", "modular"];
+const WIKI_CACHE: &str = "wiki-dispositions.json";
 /// Check at startup when the last check is older than this.
 const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 /// A card that doesn't fit triggers a check, at most this often.
@@ -187,6 +195,24 @@ fn update(dir: &Path) -> Result<Option<Vec<String>>, String> {
         changed = true;
     }
     let _ = std::fs::write(&etags_path, serde_json::to_string(&etags).unwrap_or_default());
+
+    // The wiki's dispositions; on failure, the last good copy (the export's values still work).
+    let cache = dir.join(WIKI_CACHE);
+    let cached: BTreeMap<String, f64> =
+        std::fs::read_to_string(&cache).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let dispositions = match fetch_wiki_dispositions() {
+        Ok(fresh) => {
+            if fresh != cached {
+                let _ = std::fs::write(&cache, serde_json::to_string(&fresh).unwrap_or_default());
+                changed = true;
+            }
+            fresh
+        }
+        Err(e) => {
+            eprintln!("[rivens] wiki dispositions: {e}");
+            cached
+        }
+    };
     if !changed && dir.join("rivens.json").exists() {
         return Ok(None);
     }
@@ -195,7 +221,7 @@ fn update(dir: &Path) -> Result<Option<Vec<String>>, String> {
         let text = std::fs::read_to_string(dir.join("export").join(f)).map_err(|e| format!("{f}: {e}"))?;
         serde_json::from_str(&text).map_err(|e| format!("{f}: {e}"))
     };
-    let built = build_data(&read(FILES[0])?, &read(FILES[1])?, &read(FILES[2])?, &today());
+    let built = build_data(&read(FILES[0])?, &read(FILES[1])?, &read(FILES[2])?, &dispositions, &today());
     let text = serde_json::to_string(&built).map_err(|e| e.to_string())?;
     let new = rivens::parse_data(&text)?;
     if new.types.len() < 7 || new.weapons.len() < 300 {
@@ -233,8 +259,67 @@ pub fn differences(old: &RivenData, new: &RivenData) -> Vec<String> {
     out
 }
 
-/// Builds the riven data from the three export files, as `scripts/gen_rivens.py` does.
-pub fn build_data(upgrades: &Value, weapons: &Value, words: &Value, built: &str) -> Value {
+/// Downloads the wiki's weapon modules: weapon path → disposition.
+fn fetch_wiki_dispositions() -> Result<BTreeMap<String, f64>, String> {
+    let mut found = HashMap::new();
+    for page in WIKI_PAGES {
+        let lua = crate::net::agent()
+            .get(format!("{WIKI_URL}{page}?action=raw"))
+            .call()
+            .map_err(|e| format!("{page}: {e}"))?
+            .body_mut()
+            .with_config()
+            .limit(16 * 1024 * 1024)
+            .read_to_string()
+            .map_err(|e| format!("{page}: {e}"))?;
+        wiki_dispositions(&lua, &mut found);
+    }
+    let out = settled(found);
+    if out.len() < 300 {
+        return Err(format!("only {} weapons found", out.len()));
+    }
+    Ok(out)
+}
+
+/// Reads one wiki weapon module (`Haalvu = {` / `["Tenet Quanta"] = {`, then fields indented
+/// two tabs: `InternalName = "/Lotus/Weapons/…",`, `Disposition = 0.6,`) into path → values.
+fn wiki_dispositions(lua: &str, found: &mut HashMap<String, Vec<f64>>) {
+    let (mut path, mut value): (Option<String>, Option<f64>) = (None, None);
+    for line in lua.lines() {
+        if line.starts_with('\t') && !line.starts_with("\t\t") {
+            // A weapon's opening or closing line.
+            if let (Some(p), Some(v)) = (path.take(), value.take()) {
+                found.entry(p).or_default().push(v);
+            }
+            (path, value) = (None, None);
+        } else if let Some(rest) = line.strip_prefix("\t\tInternalName = \"") {
+            path = rest.split('"').next().map(String::from);
+        } else if let Some(rest) = line.strip_prefix("\t\tDisposition = ") {
+            value = rest.trim().trim_end_matches(',').parse().ok();
+        }
+    }
+}
+
+/// Keeps the values the wiki agrees on and that are real dispositions. Kitgun chambers are listed
+/// twice (as primary and secondary, with different values) under one path; those, and the odd
+/// copy-paste slip, keep the export's value.
+fn settled(found: HashMap<String, Vec<f64>>) -> BTreeMap<String, f64> {
+    found
+        .into_iter()
+        .filter(|(_, v)| v.iter().all(|x| (x - v[0]).abs() < 1e-9) && (0.5..=1.6).contains(&v[0]))
+        .map(|(p, v)| (p, v[0]))
+        .collect()
+}
+
+/// Builds the riven data from the three export files, as `scripts/gen_rivens.py` does, with
+/// `dispositions` (the wiki's) replacing the export's.
+pub fn build_data(
+    upgrades: &Value,
+    weapons: &Value,
+    words: &Value,
+    dispositions: &BTreeMap<String, f64>,
+    built: &str,
+) -> Value {
     let text = |tag: Option<&Value>| tag.and_then(Value::as_str).and_then(|t| words.get(t)).and_then(Value::as_str).map(String::from);
     let empty = Map::new();
     let upgrades = upgrades.as_object().unwrap_or(&empty);
@@ -272,6 +357,7 @@ pub fn build_data(upgrades: &Value, weapons: &Value, words: &Value, built: &str)
     let mut riven_weapons = Map::new();
     for (path, w) in weapons {
         let Some(disposition) = w.get("omegaAttenuation") else { continue };
+        let disposition = dispositions.get(path).map_or_else(|| disposition.clone(), |d| json!(d));
         let name = text(w.get("name")).unwrap_or_else(|| path.rsplit('/').next().unwrap_or_default().to_string());
         let mut entry = json!({ "name": name, "disposition": disposition });
         if let Some(base) = base_of(&riven_for, weapons, path) {
@@ -369,7 +455,7 @@ mod tests {
     #[test]
     fn builds_the_bundled_format() {
         let (u, w, d) = fixture();
-        let built = build_data(&u, &w, &d, "2026-10-09");
+        let built = build_data(&u, &w, &d, &BTreeMap::new(), "2026-10-09");
         let data = rivens::parse_data(&built.to_string()).unwrap();
         assert_eq!(data.built, "2026-10-09");
         let heat = &data.types["LotusRifleRandomModRare"].stats["WeaponFireDamageMod"];
@@ -385,11 +471,35 @@ mod tests {
     #[test]
     fn lists_changed_dispositions() {
         let (u, w, d) = fixture();
-        let old = rivens::parse_data(&build_data(&u, &w, &d, "a").to_string()).unwrap();
+        let old = rivens::parse_data(&build_data(&u, &w, &d, &BTreeMap::new(), "a").to_string()).unwrap();
         let mut w2 = w.clone();
         w2["/W/LatronPrime"]["omegaAttenuation"] = json!(1.35);
-        let new = rivens::parse_data(&build_data(&u, &w2, &d, "b").to_string()).unwrap();
+        let new = rivens::parse_data(&build_data(&u, &w2, &d, &BTreeMap::new(), "b").to_string()).unwrap();
         assert_eq!(differences(&old, &new), ["Latron Prime disposition 1.3 → 1.35"]);
+    }
+
+    #[test]
+    fn wiki_dispositions_replace_the_exports() {
+        let lua = "return {\n\t[\"Latron Prime\"] = {\n\t\tDisposition = 1.35,\n\t\tInternalName = \"/W/LatronPrime\",\n\t\tAttacks = {\n\t\t\t{\n\t\t\t\tDisposition = 9,\n\t\t\t},\n\t\t},\n\t},\n\tLatron = {\n\t\tInternalName = \"/W/Latron\",\n\t},\n\t['Kit (Primary)'] = {\n\t\tDisposition = 1.1,\n\t\tInternalName = \"/W/Kit\",\n\t},\n\t['Kit (Secondary)'] = {\n\t\tDisposition = 0.75,\n\t\tInternalName = \"/W/Kit\",\n\t},\n\tClaws = {\n\t\tDisposition = 0,\n\t\tInternalName = \"/W/Claws\",\n\t},\n}";
+        let mut found = HashMap::new();
+        wiki_dispositions(lua, &mut found);
+        let wiki = settled(found);
+        // No value, two different values (a kitgun) and 0 are all skipped; nested fields too.
+        assert_eq!(wiki, BTreeMap::from([("/W/LatronPrime".to_string(), 1.35)]));
+        let (u, w, d) = fixture();
+        let data = rivens::parse_data(&build_data(&u, &w, &d, &wiki, "a").to_string()).unwrap();
+        assert_eq!(data.weapons["/W/LatronPrime"].disposition, 1.35);
+        assert_eq!(data.weapons["/W/Latron"].disposition, 1.4, "the export's value without a wiki one");
+    }
+
+    /// The live wiki has Haalvu at 0.6 (September 2026; the export still says 0.5). Needs the
+    /// network.
+    #[test]
+    #[ignore]
+    fn live_wiki_dispositions() {
+        let wiki = fetch_wiki_dispositions().unwrap();
+        assert!(wiki.len() > 550, "{}", wiki.len());
+        assert_eq!(wiki["/Lotus/Weapons/Sentients/SentOctaMiniGun/SentOctaMiniGun"], 0.6);
     }
 
     #[test]
@@ -417,14 +527,16 @@ mod tests {
     }
 
     /// The Rust port gives the same data as `gen_rivens.py`. Run with `WF_EXPORT_DIR` set to a
-    /// folder with the three export files the bundled copy was made from.
+    /// folder with the three export files and the `wiki-dispositions.json` the bundled copy was
+    /// made from.
     #[test]
     #[ignore]
     fn port_matches_the_script() {
         let dir = PathBuf::from(std::env::var("WF_EXPORT_DIR").expect("WF_EXPORT_DIR"));
         let read = |f: &str| serde_json::from_str::<Value>(&std::fs::read_to_string(dir.join(f)).unwrap()).unwrap();
         let bundled: Value = serde_json::from_str(include_str!("../data/rivens.json")).unwrap();
-        let built = build_data(&read(FILES[0]), &read(FILES[1]), &read(FILES[2]), bundled["built"].as_str().unwrap());
+        let wiki: BTreeMap<String, f64> = serde_json::from_str(&std::fs::read_to_string(dir.join(WIKI_CACHE)).unwrap()).unwrap();
+        let built = build_data(&read(FILES[0]), &read(FILES[1]), &read(FILES[2]), &wiki, bundled["built"].as_str().unwrap());
         assert_eq!(built, bundled);
     }
 }
