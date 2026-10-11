@@ -10,7 +10,9 @@
 //! Dispositions change on DE's servers every few months without the game files (and so the
 //! export) changing. The Warframe wiki's weapon modules (`Module:Weapons/data/*`, CC BY-SA 3.0)
 //! are updated with each change, so their values replace the export's. They're downloaded at
-//! every check; the last good copy is kept in `riven-data/wiki-dispositions.json`.
+//! every check; the last good copy is kept in `riven-data/wiki-dispositions.json`. Weapons the
+//! export doesn't have yet (Corufell Prime, October 2026) come from the wiki too, as their
+//! family's riven weapon.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -18,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -31,6 +33,16 @@ const SOURCE: &str = "Warframe Public Export Plus (calamity-inc/warframe-public-
 const WIKI_URL: &str = "https://wiki.warframe.com/w/Module:Weapons/data/";
 const WIKI_PAGES: [&str; 6] = ["primary", "secondary", "melee", "archwing", "companion", "modular"];
 const WIKI_CACHE: &str = "wiki-dispositions.json";
+
+/// What the wiki says about a weapon: its disposition, plus its name and family for weapons the
+/// export doesn't have yet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WikiWeapon {
+    pub disposition: f64,
+    pub name: String,
+    /// "Corufell" for Corufell and Corufell Prime.
+    pub family: String,
+}
 /// Check at startup when the last check is older than this.
 const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 /// A card that doesn't fit triggers a check, at most this often.
@@ -198,7 +210,7 @@ fn update(dir: &Path) -> Result<Option<Vec<String>>, String> {
 
     // The wiki's dispositions; on failure, the last good copy (the export's values still work).
     let cache = dir.join(WIKI_CACHE);
-    let cached: BTreeMap<String, f64> =
+    let cached: BTreeMap<String, WikiWeapon> =
         std::fs::read_to_string(&cache).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let dispositions = match fetch_wiki_dispositions() {
         Ok(fresh) => {
@@ -259,8 +271,8 @@ pub fn differences(old: &RivenData, new: &RivenData) -> Vec<String> {
     out
 }
 
-/// Downloads the wiki's weapon modules: weapon path → disposition.
-fn fetch_wiki_dispositions() -> Result<BTreeMap<String, f64>, String> {
+/// Downloads the wiki's weapon modules: weapon path → what the wiki says about it.
+fn fetch_wiki_dispositions() -> Result<BTreeMap<String, WikiWeapon>, String> {
     let mut found = HashMap::new();
     for page in WIKI_PAGES {
         let lua = crate::net::agent()
@@ -282,20 +294,27 @@ fn fetch_wiki_dispositions() -> Result<BTreeMap<String, f64>, String> {
 }
 
 /// Reads one wiki weapon module (`Haalvu = {` / `["Tenet Quanta"] = {`, then fields indented
-/// two tabs: `InternalName = "/Lotus/Weapons/…",`, `Disposition = 0.6,`) into path → values.
-fn wiki_dispositions(lua: &str, found: &mut HashMap<String, Vec<f64>>) {
-    let (mut path, mut value): (Option<String>, Option<f64>) = (None, None);
+/// two tabs: `InternalName = "/Lotus/Weapons/…",`, `Disposition = 0.6,`, `Name = "…",`,
+/// `Family = "…",`) into path → entries.
+fn wiki_dispositions(lua: &str, found: &mut HashMap<String, Vec<WikiWeapon>>) {
+    let (mut path, mut value, mut name, mut family) = (None, None, String::new(), String::new());
+    let quoted = |rest: &str| rest.split('"').next().unwrap_or_default().to_string();
     for line in lua.lines() {
         if line.starts_with('\t') && !line.starts_with("\t\t") {
             // A weapon's opening or closing line.
-            if let (Some(p), Some(v)) = (path.take(), value.take()) {
-                found.entry(p).or_default().push(v);
+            if let (Some(p), Some(disposition)) = (path.take(), value.take()) {
+                let entry = WikiWeapon { disposition, name: std::mem::take(&mut name), family: std::mem::take(&mut family) };
+                found.entry(p).or_default().push(entry);
             }
-            (path, value) = (None, None);
+            (path, value, name, family) = (None, None, String::new(), String::new());
         } else if let Some(rest) = line.strip_prefix("\t\tInternalName = \"") {
-            path = rest.split('"').next().map(String::from);
+            path = Some(quoted(rest));
         } else if let Some(rest) = line.strip_prefix("\t\tDisposition = ") {
             value = rest.trim().trim_end_matches(',').parse().ok();
+        } else if let Some(rest) = line.strip_prefix("\t\tName = \"") {
+            name = quoted(rest);
+        } else if let Some(rest) = line.strip_prefix("\t\tFamily = \"") {
+            family = quoted(rest);
         }
     }
 }
@@ -303,21 +322,25 @@ fn wiki_dispositions(lua: &str, found: &mut HashMap<String, Vec<f64>>) {
 /// Keeps the values the wiki agrees on and that are real dispositions. Kitgun chambers are listed
 /// twice (as primary and secondary, with different values) under one path; those, and the odd
 /// copy-paste slip, keep the export's value.
-fn settled(found: HashMap<String, Vec<f64>>) -> BTreeMap<String, f64> {
+fn settled(found: HashMap<String, Vec<WikiWeapon>>) -> BTreeMap<String, WikiWeapon> {
     found
         .into_iter()
-        .filter(|(_, v)| v.iter().all(|x| (x - v[0]).abs() < 1e-9) && (0.5..=1.6).contains(&v[0]))
-        .map(|(p, v)| (p, v[0]))
+        .filter(|(_, v)| {
+            let d = v[0].disposition;
+            v.iter().all(|w| (w.disposition - d).abs() < 1e-9) && (0.5..=1.6).contains(&d)
+        })
+        .map(|(p, mut v)| (p, v.swap_remove(0)))
         .collect()
 }
 
 /// Builds the riven data from the three export files, as `scripts/gen_rivens.py` does, with
-/// `dispositions` (the wiki's) replacing the export's.
+/// the wiki's dispositions replacing the export's, and weapons only the wiki has added as their
+/// family's riven weapon.
 pub fn build_data(
     upgrades: &Value,
     weapons: &Value,
     words: &Value,
-    dispositions: &BTreeMap<String, f64>,
+    dispositions: &BTreeMap<String, WikiWeapon>,
     built: &str,
 ) -> Value {
     let text = |tag: Option<&Value>| tag.and_then(Value::as_str).and_then(|t| words.get(t)).and_then(Value::as_str).map(String::from);
@@ -357,7 +380,7 @@ pub fn build_data(
     let mut riven_weapons = Map::new();
     for (path, w) in weapons {
         let Some(disposition) = w.get("omegaAttenuation") else { continue };
-        let disposition = dispositions.get(path).map_or_else(|| disposition.clone(), |d| json!(d));
+        let disposition = dispositions.get(path).map_or_else(|| disposition.clone(), |w| json!(w.disposition));
         let name = text(w.get("name")).unwrap_or_else(|| path.rsplit('/').next().unwrap_or_default().to_string());
         let mut entry = json!({ "name": name, "disposition": disposition });
         if let Some(base) = base_of(&riven_for, weapons, path) {
@@ -366,6 +389,28 @@ pub fn build_data(
         }
         riven_weapons.insert(path.clone(), entry);
     }
+
+    // Weapons newer than the export: the riven type and base of their family's riven weapon
+    // (the base weapon's own entry first).
+    let mut family: HashMap<&str, (Value, Value)> = HashMap::new();
+    let mut known: Vec<(&String, &Value)> = riven_weapons.iter().collect();
+    known.sort_by_key(|(p, e)| (e.get("base").and_then(Value::as_str) != Some(p.as_str()), (*p).clone()));
+    for (path, entry) in known {
+        let (Some(kind), Some(base), Some(w)) = (entry.get("kind"), entry.get("base"), dispositions.get(path)) else { continue };
+        if !w.family.is_empty() {
+            family.entry(w.family.as_str()).or_insert_with(|| (kind.clone(), base.clone()));
+        }
+    }
+    let mut added = Map::new();
+    for (path, w) in dispositions {
+        if weapons.contains_key(path) || w.name.is_empty() {
+            continue;
+        }
+        if let Some((kind, base)) = family.get(w.family.as_str()) {
+            added.insert(path.clone(), json!({ "name": w.name, "disposition": w.disposition, "kind": kind, "base": base }));
+        }
+    }
+    riven_weapons.extend(added);
     json!({ "source": SOURCE, "built": built, "types": types, "veiled": veiled, "weapons": riven_weapons })
 }
 
@@ -485,11 +530,32 @@ mod tests {
         wiki_dispositions(lua, &mut found);
         let wiki = settled(found);
         // No value, two different values (a kitgun) and 0 are all skipped; nested fields too.
-        assert_eq!(wiki, BTreeMap::from([("/W/LatronPrime".to_string(), 1.35)]));
+        let only: Vec<(&str, f64)> = wiki.iter().map(|(p, w)| (p.as_str(), w.disposition)).collect();
+        assert_eq!(only, [("/W/LatronPrime", 1.35)]);
         let (u, w, d) = fixture();
         let data = rivens::parse_data(&build_data(&u, &w, &d, &wiki, "a").to_string()).unwrap();
         assert_eq!(data.weapons["/W/LatronPrime"].disposition, 1.35);
         assert_eq!(data.weapons["/W/Latron"].disposition, 1.4, "the export's value without a wiki one");
+    }
+
+    #[test]
+    fn weapons_only_the_wiki_has_join_their_family() {
+        // Corufell Prime (update 44.0) isn't in the export yet; the wiki lists it in Corufell's
+        // family, so its rivens use Corufell's riven type at its own disposition.
+        let (u, w, d) = fixture();
+        let entry = |disposition: f64, name: &str, family: &str| WikiWeapon { disposition, name: name.into(), family: family.into() };
+        let wiki = BTreeMap::from([
+            ("/W/Latron".to_string(), entry(1.4, "Latron", "Latron")),
+            ("/W/LatronNew".to_string(), entry(0.5, "Latron Newer", "Latron")),
+            ("/W/Orphan".to_string(), entry(0.9, "Orphan", "Nobody")),
+            ("/W/NoRivens".to_string(), entry(1.0, "Latron", "Latron")),
+        ]);
+        let data = rivens::parse_data(&build_data(&u, &w, &d, &wiki, "a").to_string()).unwrap();
+        let new = &data.weapons["/W/LatronNew"];
+        assert_eq!((new.name.as_str(), new.disposition), ("Latron Newer", 0.5));
+        assert_eq!((new.kind.as_deref(), new.base.as_deref()), (Some("LotusRifleRandomModRare"), Some("/W/Latron")));
+        assert!(!data.weapons.contains_key("/W/Orphan"), "no family with rivens");
+        assert!(!data.weapons.contains_key("/W/NoRivens"), "in the export without a disposition: not a riven weapon");
     }
 
     /// The live wiki has Haalvu at 0.6 (September 2026; the export still says 0.5). Needs the
@@ -499,7 +565,9 @@ mod tests {
     fn live_wiki_dispositions() {
         let wiki = fetch_wiki_dispositions().unwrap();
         assert!(wiki.len() > 550, "{}", wiki.len());
-        assert_eq!(wiki["/Lotus/Weapons/Sentients/SentOctaMiniGun/SentOctaMiniGun"], 0.6);
+        assert_eq!(wiki["/Lotus/Weapons/Sentients/SentOctaMiniGun/SentOctaMiniGun"].disposition, 0.6);
+        let prime = &wiki["/Lotus/Weapons/Tenno/Archwing/Melee/PrimeCorufell/PrimeCorufellScytheWeapon"];
+        assert_eq!((prime.name.as_str(), prime.family.as_str(), prime.disposition), ("Corufell Prime", "Corufell", 0.5));
     }
 
     #[test]
@@ -535,7 +603,7 @@ mod tests {
         let dir = PathBuf::from(std::env::var("WF_EXPORT_DIR").expect("WF_EXPORT_DIR"));
         let read = |f: &str| serde_json::from_str::<Value>(&std::fs::read_to_string(dir.join(f)).unwrap()).unwrap();
         let bundled: Value = serde_json::from_str(include_str!("../data/rivens.json")).unwrap();
-        let wiki: BTreeMap<String, f64> = serde_json::from_str(&std::fs::read_to_string(dir.join(WIKI_CACHE)).unwrap()).unwrap();
+        let wiki: BTreeMap<String, WikiWeapon> = serde_json::from_str(&std::fs::read_to_string(dir.join(WIKI_CACHE)).unwrap()).unwrap();
         let built = build_data(&read(FILES[0]), &read(FILES[1]), &read(FILES[2]), &wiki, bundled["built"].as_str().unwrap());
         assert_eq!(built, bundled);
     }
