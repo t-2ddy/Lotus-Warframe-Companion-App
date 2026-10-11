@@ -39,11 +39,13 @@ pub struct Card {
     /// The stat lines as read, wrapped labels joined (`-46.2% Magazine Capacity`), for showing
     /// the card before it's worked out.
     pub stat_lines: Vec<String>,
+    /// Stat labels read without their number (a card still fading in): it can't be worked out.
+    pub lost_numbers: usize,
 }
 
 impl Card {
     pub fn empty() -> Self {
-        Card { title: String::new(), stats: Vec::new(), mastery: None, rerolls: None, stat_lines: Vec::new() }
+        Card { title: String::new(), stats: Vec::new(), mastery: None, rerolls: None, stat_lines: Vec::new(), lost_numbers: 0 }
     }
 
     /// The riven's own name: the last word of the title.
@@ -145,6 +147,7 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
     let mut stats: Vec<CardStat> = Vec::new();
     let mut stat_lines: Vec<String> = Vec::new();
     let (mut mastery, mut rerolls) = (None, None);
+    let mut lost_numbers = 0;
     for raw in lines {
         let line = raw.trim();
         if line.is_empty() {
@@ -185,6 +188,10 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
         }
         if stats.is_empty() && mastery.is_none() {
             title_parts.push(line.to_string());
+        } else if mastery.is_none() && is_faction_label(line) {
+            // A whole label on its own ("Damage to Infested", its "x0.98" not read yet), not
+            // the end of the label above.
+            lost_numbers += 1;
         } else if mastery.is_none() && !compact.starts_with("MR") && looks_like_words(line.trim_end_matches(')')) {
             // A long label wraps onto its own line ("-46.2% Magazine" / "Capacity", "Fire Rate
             // (x2 for" / "Bows)").
@@ -192,7 +199,13 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
         }
     }
     let title = title_from(&title_parts);
-    (!title.is_empty() && stats.len() >= 2).then_some(Card { title, stats, mastery, rerolls, stat_lines })
+    (!title.is_empty() && stats.len() >= 2).then_some(Card { title, stats, mastery, rerolls, stat_lines, lost_numbers })
+}
+
+/// "Damage to Infested" / "Damage vs Corpus": a faction stat's label, which never wraps.
+fn is_faction_label(line: &str) -> bool {
+    let words: Vec<&str> = line.split_whitespace().collect();
+    words.len() == 3 && words[0].eq_ignore_ascii_case("damage") && matches!(words[1].to_lowercase().as_str(), "to" | "vs" | "vs.")
 }
 
 /// The label part of a stat line as shown: `+139.9% Slam Attack Damage` → `Slam Attack Damage`.
@@ -327,6 +340,15 @@ pub fn name_tags(kind: &RivenType, riven_name: &str) -> Vec<String> {
     let parts: Vec<&str> = lower.split('-').collect();
     let last = parts.last().copied().unwrap_or_default();
     let mut tags: Vec<(usize, String)> = Vec::new();
+    // Only one suffix ends the name: the longest that fits, so "loctisus" is Slash ("sus"), not
+    // Heavy Attack Efficiency ("us").
+    let suffix_len = kind
+        .stats
+        .values()
+        .map(|s| s.suffix.to_lowercase())
+        .filter(|sfx| !sfx.is_empty() && last.ends_with(sfx.as_str()) && last.len() > sfx.len())
+        .map(|sfx| sfx.len())
+        .max();
     for (tag, s) in &kind.stats {
         let p = s.prefix.to_lowercase();
         let sfx = s.suffix.to_lowercase();
@@ -337,7 +359,7 @@ pub fn name_tags(kind: &RivenType, riven_name: &str) -> Vec<String> {
                 continue;
             }
         }
-        if !sfx.is_empty() && last.ends_with(&sfx) && last.len() > sfx.len() {
+        if !sfx.is_empty() && last.ends_with(&sfx) && last.len() > sfx.len() && Some(sfx.len()) == suffix_len {
             tags.push((usize::MAX, tag.clone()));
         }
     }
@@ -352,6 +374,16 @@ pub struct Identified {
     pub view: RivenView,
     /// The rank wasn't known, so it was worked out from the numbers.
     pub rank_assumed: bool,
+}
+
+/// One step of the number as the card shows it, in raw units: `x0.98` (0.01), `+13.5%` (0.001),
+/// `+0.3 Range` (0.1).
+fn display_step(stat: &CardStat, data_label: &str) -> f64 {
+    match stat.unit {
+        Unit::Times => 0.01,
+        _ if data_label.contains("|val|%") => 0.001,
+        _ => 0.1,
+    }
 }
 
 fn raw_value(stat: &CardStat, data_label: &str) -> f64 {
@@ -468,17 +500,65 @@ pub fn rebuild(
             *t = Some(spare.remove(0));
         }
     }
-    if let Some(i) = tags.iter().position(Option::is_none) {
-        return Err(format!("stat not recognised: \"{}\" ({})", card.stats[i].label, card.stats[i].value));
+    let Some(i) = tags.iter().position(Option::is_none) else {
+        let tags: Vec<String> = tags.into_iter().flatten().collect();
+        return rebuild_tagged(data, sheet, kind, riven_type, card, compat, disposition, rank, &tags);
+    };
+    // A label hidden by its icon that the name doesn't give (a curse): one of the icon stats,
+    // the first whose numbers fit. Slash first: its icon hides the label entirely.
+    let not_recognised = || format!("stat not recognised: \"{}\" ({})", card.stats[i].label, card.stats[i].value);
+    if !card.stats[i].label.is_empty() || card.stats[i].unit != Unit::Percent {
+        return Err(not_recognised());
     }
-    let tags: Vec<String> = tags.into_iter().flatten().collect();
+    let mut first_err = None;
+    for icon in ICON_STATS.iter().filter(|t| kind.stats.contains_key(**t) && !tags.iter().flatten().any(|u| u == *t)) {
+        let mut tried = tags.clone();
+        tried[i] = Some(icon.to_string());
+        if tried.iter().any(Option::is_none) {
+            return Err(not_recognised());
+        }
+        let tried: Vec<String> = tried.into_iter().flatten().collect();
+        match rebuild_tagged(data, sheet, kind, riven_type, card, compat.clone(), disposition, rank, &tried) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    Err(first_err.unwrap_or_else(not_recognised))
+}
+
+/// Stats shown with an icon before the label, which OCR may lose with it; most likely first.
+const ICON_STATS: [&str; 7] = [
+    "WeaponSlashDamageMod",
+    "WeaponImpactDamageMod",
+    "WeaponArmorPiercingDamageMod",
+    "WeaponFireDamageMod",
+    "WeaponFreezeDamageMod",
+    "WeaponElectricityDamageMod",
+    "WeaponToxinDamageMod",
+];
+
+/// `rebuild` once every card stat has a tag.
+#[allow(clippy::too_many_arguments)]
+fn rebuild_tagged(
+    data: &RivenData,
+    sheet: &GradeSheet,
+    kind: &RivenType,
+    riven_type: &str,
+    card: &Card,
+    compat: String,
+    disposition: f64,
+    rank: Option<u32>,
+    tags: &[String],
+) -> Result<Identified, String> {
 
     // Buff or curse: a curse goes against the stat's usual direction. Spliced traits without
     // known numbers still count towards the buff/curse totals but aren't worked out.
     let mut lines = Vec::new();
     let mut pending = Vec::new(); // (card position, tag, is_buff)
     let mut buff_at = Vec::new(); // is_buff for each card stat, in card order
-    for (i, (stat, tag)) in card.stats.iter().zip(&tags).enumerate() {
+    for (i, (stat, tag)) in card.stats.iter().zip(tags).enumerate() {
         let Some(info) = rivens::stat_info(kind, tag) else {
             let is_buff = if stat.unit == Unit::Times { stat.value >= 1.0 } else { stat.value >= 0.0 };
             pending.push((i, tag.clone(), is_buff));
@@ -487,7 +567,7 @@ pub fn rebuild(
         };
         let raw = raw_value(stat, &info.label);
         let is_buff = raw.signum() == info.value.signum();
-        lines.push((tag.clone(), raw, is_buff, info.value));
+        lines.push((tag.clone(), raw, is_buff, info.value, display_step(stat, &info.label)));
         buff_at.push(is_buff);
     }
     let nb = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count();
@@ -498,30 +578,33 @@ pub fn rebuild(
     const BUFF: [f64; 6] = [0.0, 1.0, 0.66000003, 0.5, 0.40000001, 0.34999999];
     const CURSE_BUFF: [f64; 6] = [0.0, 1.0, 0.33000001, 0.5, 1.25, 1.5];
     let atten = 1.5 * disposition * 10.0;
-    let fractions = |r: u32| -> Vec<f64> {
+    // Each stat's roll (0 = 90% of its full value, 1 = 110%), and how far that can be off
+    // because the card rounds the number (x0.98 on a rank 0 riven is anywhere in ±0.01).
+    let rolls = |r: u32| -> Vec<(f64, f64)> {
         let level = f64::from(r + 1);
         lines
             .iter()
-            .map(|(_, raw, buff, base)| {
+            .map(|(_, raw, buff, base, step)| {
                 let full = if *buff {
                     base * atten * 1.25f64.powi(nc as i32) * BUFF[nb.min(5)] * level
                 } else {
                     -base * atten * CURSE_BUFF[nb.min(5)] * BUFF[nc.min(5)] * level
                 };
-                (raw / full - 0.9) / 0.2
+                ((raw / full - 0.9) / 0.2, step / full.abs() / 0.2)
             })
             .collect()
     };
-    let fits = |f: &[f64]| f.iter().all(|x| (-0.12..=1.12).contains(x));
+    let fits = |f: &[(f64, f64)]| f.iter().all(|(x, off)| (-0.12 - off..=1.12 + off).contains(x));
     let (rank, rank_assumed) = match rank {
         Some(r) => (r, false),
         None => {
-            let found = (0..=rivens::MAX_RANK).rev().find(|r| fits(&fractions(*r)));
-            let r = found.ok_or_else(|| format!("numbers don't fit any rank (rolls at rank 8: {:?})", fractions(8)))?;
+            let found = (0..=rivens::MAX_RANK).rev().find(|r| fits(&rolls(*r)));
+            let at_8: Vec<f64> = rolls(8).into_iter().map(|(x, _)| x).collect();
+            let r = found.ok_or_else(|| format!("numbers don't fit any rank (rolls at rank 8: {at_8:?})"))?;
             (r, true)
         }
     };
-    let f = fractions(rank);
+    let f: Vec<f64> = rolls(rank).into_iter().map(|(x, _)| x).collect();
     let roll = |x: f64| (x.clamp(0.0, 1.0) * f64::from(0x3FFF_FFFFu32)).round() as u64;
     let mut buffs: Vec<_> = lines.iter().zip(&f).filter(|(l, _)| l.2).map(|(l, x)| json!({"Tag": l.0, "Value": roll(*x)})).collect();
     let mut curses: Vec<_> = lines.iter().zip(&f).filter(|(l, _)| !l.2).map(|(l, x)| json!({"Tag": l.0, "Value": roll(*x)})).collect();
@@ -913,5 +996,79 @@ mod own_tests {
         let prime = Some("/Lotus/Weapons/Tenno/LongGuns/PrimeBurston/PrimeBurston");
         assert_eq!(shown_disposition(d, &card, prime), Some(1.35));
         assert_eq!(shown_disposition(d, &card, Some("/Lotus/Weapons/ClanTech/Bio/BioWeapon")), None, "other weapon");
+    }
+}
+
+#[cfg(test)]
+mod slash_icon_tests {
+    use super::*;
+
+    fn card(s: &str) -> Card {
+        parse_card(&s.split(" / ").map(String::from).collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn hidden_slash_buff_comes_from_the_longest_suffix() {
+        // riven_misfits.jsonl 2026-10-10: the Slash label hid behind its icon; "loctisus" ends in
+        // both "sus" (Slash) and "us" (Heavy Attack Efficiency), and the wrong one was taken.
+        let d = rivens::data();
+        let d = &*d;
+        let melee = &d.types["PlayerMeleeWeaponRandomModRare"];
+        let tags = name_tags(melee, "Crita-loctisus");
+        assert!(tags.contains(&"WeaponSlashDamageMod".to_string()), "{tags:?}");
+        assert!(!tags.contains(&"WeaponMeleeComboEfficiencyMod".to_string()), "{tags:?}");
+        let c = card("Dual Heat Swords / Crita-loctisus / +29.2% Critical Chance / (x2 for Heavy Attacks) / +0.3 Range / +17.9% / -10.4% Status Chance / MR 10");
+        let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &c, None, None).unwrap();
+        assert_eq!(r.view.stats[2].text, "+17.9% Slash");
+    }
+
+    #[test]
+    fn wiki_disposition_fits_a_changed_weapon() {
+        // riven_misfits.jsonl 2026-10-10: Haalvu went 0.5 → 0.6 in September 2026; the export
+        // still said 0.5, so nothing fit. The bundled data now takes the wiki's 0.6.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Haalvu Acri-toxicron / +85.3% Critical Chance / +52.2% 'Toxin / +74.2% Critical Damage / -27% Zoom / MR 12 / 016 \\");
+        let r = rebuild(d, &GradeSheet::default(), "LotusRifleRandomModRare", &c, None, None).unwrap();
+        assert_eq!(r.view.rank, 8);
+        let texts: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(texts, ["+85.3% Critical Chance", "+52.2% Toxin", "+74.2% Critical Damage", "-27% Zoom"]);
+    }
+
+    #[test]
+    fn a_label_without_its_number_is_not_a_wrap() {
+        // riven_misfits.jsonl 2026-10-10: read while fading in, "x0.98" was missing and
+        // "Damage to Infested" was joined onto Critical Chance as a new trait.
+        let early = card("Kompressa Critado / +7.9% *Cold / +13.5% Critical Chance / Damage to Infested / MR 13");
+        assert_eq!(early.stats[1].label, "criticalchance");
+        assert_eq!(early.stat_lines[1], "+13.5% Critical Chance");
+        assert_eq!(early.lost_numbers, 1);
+        let full = card("Kompressa Critado / +7.9% *Cold / +13.5% Critical Chance / x0.98 Damage to Infested / MR 13 / 02");
+        assert_eq!(full.lost_numbers, 0);
+        assert_eq!(full.stats[2], CardStat { value: 0.98, unit: Unit::Times, label: "damagetoinfested".into() });
+        // Its numbers are Kompressa Prime's (0.6), not Kompressa's (1.15): the overlay tries
+        // the variants when the base weapon doesn't fit.
+        let d = rivens::data();
+        let d = &*d;
+        let sheet = GradeSheet::default();
+        assert!(variant_unknown(d, &full, None));
+        assert!(rebuild(d, &sheet, "LotusPistolRandomModRare", &full, None, None).is_err());
+        let prime = Some("/Lotus/Weapons/Tenno/Pistols/PrimeKompressa/PrimeKompressa");
+        let r = rebuild(d, &sheet, "LotusPistolRandomModRare", &full, prime, None).unwrap();
+        assert_eq!((r.view.rank, r.view.disposition), (0, 0.6));
+        // Wrapped labels still join.
+        assert_eq!(card("Torid Acri-caricron / +196.1% Critical Chance / -46.2% Magazine / Capacity").lost_numbers, 0);
+    }
+
+    #[test]
+    fn hidden_slash_curse_is_tried_as_an_icon_stat() {
+        // riven_misfits.jsonl 2026-10-10: "-114% Slash" read as "-114%"; curses aren't in the name.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Ocucor Acri-corican / +108.9% Critical Damage / +108.8% OCorrosive / +144.2% Multishot / -114% / MR 15 / 0 394");
+        let r = rebuild(d, &GradeSheet::default(), "LotusPistolRandomModRare", &c, None, None).unwrap();
+        let texts: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+        assert!(texts.contains(&"-114% Slash"), "{texts:?}");
+        assert!(r.view.stats.iter().all(|s| !s.pending), "{texts:?}");
     }
 }

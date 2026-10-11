@@ -491,7 +491,7 @@ impl Controller {
         };
         self.watch_misses = 0;
         let same = matches!(&self.session, Some(Session::Inspect { card: shown, .. }) if shown.same_as(&card));
-        let complete = card.mastery.is_some();
+        let complete = card.mastery.is_some() && card.lost_numbers == 0;
         if !same {
             // Another riven (browsing a list without the card closing): settle it afresh.
             let other = !matches!(&self.session, Some(Session::Inspect { card: shown, .. }) if card::norm(&shown.title) == card::norm(&card.title));
@@ -900,9 +900,12 @@ impl Controller {
         // which: show the base weapon's numbers now, with a note. The log often names the
         // variant 10+ s later, and the panel is corrected then.
         let variant_unknown = card::variant_unknown(data, card, weapon);
-        let own = rivens::owned_rivens(&self.shared).map(|(o, _)| o).unwrap_or_default();
+        let (own, items) = rivens::owned_rivens(&self.shared).unwrap_or_default();
         let mut errors: Vec<String> = Vec::new();
-        if let Some(view) = card::find_own(data, &sheet, &own, card, weapon) {
+        let mut fitted_variant = None;
+        if card.lost_numbers > 0 {
+            errors.push("a stat's number wasn't read".into());
+        } else if let Some(view) = card::find_own(data, &sheet, &own, card, weapon) {
             panel.own = true;
             panel.riven = Some(view);
         } else {
@@ -919,11 +922,34 @@ impl Controller {
             if types.is_empty() {
                 errors.push("riven type unknown".into());
             }
+            // The base weapon's numbers don't fit and the game didn't say which variant it's
+            // shown with: try the variants, the user's own first (Kompressa 1.15 vs Kompressa
+            // Prime 0.6).
+            if panel.riven.is_none() && variant_unknown {
+                let base = card::weapon_path(data, card, None).unwrap_or_default();
+                let mut variants: Vec<&str> = data.family(&base).into_iter().map(|(p, _)| p).filter(|p| *p != base).collect();
+                variants.sort_by_key(|p| !items.keys().any(|(_, item)| item == p));
+                'variants: for v in variants {
+                    for kind in types {
+                        if let Ok(r) = card::rebuild(data, &sheet, kind, card, Some(v), rank) {
+                            panel.rank_assumed = r.rank_assumed;
+                            panel.riven = Some(r.view);
+                            fitted_variant = data.weapons.get(v).map(|w| w.name.clone());
+                            break 'variants;
+                        }
+                    }
+                }
+            }
         }
         match &panel.riven {
             Some(v) => {
                 panel.status = "ready";
-                if variant_unknown {
+                if let Some(name) = &fitted_variant {
+                    panel.note = Some(format!(
+                        "Numbers for {name} (disposition {}): they fit it, not {}; the game didn't say which variant it's shown with",
+                        v.disposition, v.weapon
+                    ));
+                } else if variant_unknown {
                     panel.note = Some(format!(
                         "Numbers for {} (disposition {}); the game didn't say which variant it's shown with",
                         v.weapon, v.disposition

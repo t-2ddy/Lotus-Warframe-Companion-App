@@ -84,7 +84,36 @@ impl RivenData {
     }
 
     fn parse(text: &str) -> Result<RivenData, String> {
-        serde_json::from_str(text).map_err(|e| e.to_string())
+        let mut data: RivenData = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        data.fill_factions();
+        Ok(data)
+    }
+
+    /// Archgun rivens no longer roll Damage to Infested, so the export leaves it out, but older
+    /// archgun rivens still have it. Every type with some faction damage gets all the factions
+    /// any type has, worth the same as its own (they're all 0.005).
+    fn fill_factions(&mut self) {
+        const MARK: &str = "FactionDamage";
+        // Faction → (label, prefix, suffix), the same in every type.
+        let mut templates: HashMap<String, StatInfo> = HashMap::new();
+        for t in self.types.values() {
+            for (tag, s) in &t.stats {
+                if let Some((_, faction)) = tag.split_once(MARK) {
+                    templates.entry(faction.to_string()).or_insert_with(|| s.clone());
+                }
+            }
+        }
+        for t in self.types.values_mut() {
+            // "WeaponFactionDamage" or "WeaponMeleeFactionDamage", and what a faction is worth.
+            let Some((stem, value)) = t.stats.iter().find_map(|(tag, s)| {
+                tag.split_once(MARK).map(|(before, _)| (format!("{before}{MARK}"), s.value))
+            }) else {
+                continue;
+            };
+            for (faction, s) in &templates {
+                t.stats.entry(format!("{stem}{faction}")).or_insert_with(|| StatInfo { value, ..s.clone() });
+            }
+        }
     }
 }
 
@@ -702,6 +731,26 @@ mod tests {
         // Curse: −(−0.01) × 15 × 1.0 × 0.33000001 × 1.0 × 9 = +44.55…% recoil (bad)
         assert_eq!(r.stats[2].text, "+44.6% Weapon Recoil");
         assert!(!r.stats[2].good);
+    }
+
+    #[test]
+    fn archgun_rivens_keep_damage_to_infested() {
+        // An older archgun riven showed "collecting data": archgun rivens no longer roll Damage
+        // to Infested, so the export doesn't list it. (Made-up rolls.)
+        let d = data();
+        let r = OwnedRiven {
+            id: "a".into(),
+            item_type: "/Lotus/Upgrades/Mods/Randomized/LotusArchgunRandomModRare".into(),
+            fingerprint: r#"{"compat":"/Lotus/Weapons/Tenno/Archwing/Primary/ArchBurstGun/ArchBurstGun","buffs":[{"Tag":"WeaponFireRateMod","Value":500000000},{"Tag":"WeaponFactionDamageInfested","Value":600000000}],"curses":[]}"#.into(),
+        };
+        let v = view(&d, &GradeSheet::default(), &r, MAX_RANK).unwrap();
+        assert!(!v.grade_pending);
+        let infested = v.stats.iter().find(|s| s.tag == "WeaponFactionDamageInfested").unwrap();
+        assert!(!infested.pending && infested.text.starts_with('x') && infested.text.ends_with("Damage to Infested"), "{}", infested.text);
+        assert!(v.name.ends_with("ada") || v.name.to_lowercase().starts_with("pura"), "{}", v.name);
+        // Types that already list it are unchanged; melee keeps its own tags.
+        let melee = &d.types["PlayerMeleeWeaponRandomModRare"];
+        assert!(!melee.stats.contains_key("WeaponFactionDamageInfested"));
     }
 
     #[test]

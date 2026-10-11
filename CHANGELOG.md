@@ -7,6 +7,18 @@ it's 0.x, anything may still change.
 
 ### Fixed
 - Pages now open at the top instead of at the previous page's scroll position.
+- Riven overlay: reads cards whose Slash label is hidden by its icon, both as a positive stat
+  (worked out from the riven's name) and as the negative (tried as each damage type).
+- Riven overlay: rivens for weapons whose disposition changed recently (e.g. Haalvu 0.5 → 0.6
+  in September 2026) work out again. Dispositions now come from the Warframe wiki, which
+  follows DE's changes; the game's data export doesn't.
+- Riven overlay: a faction stat read before its number ("Damage to Infested" without "x0.98")
+  is no longer shown as a new trait; the card is read again until the number shows.
+- Riven overlay: when the game doesn't say which variant a riven is shown with and the base
+  weapon's numbers don't fit, the variants are tried (yours first), e.g. Kompressa Prime.
+- Riven overlay: low-rank rivens fit even though the card rounds their small numbers.
+- Rivens: archgun rivens with Damage to Infested are graded instead of "collecting data"
+  (archguns can't roll it any more, so the game data leaves it out, but older rivens keep it).
 
 ## [0.1.1] — 2026-10-10
 
