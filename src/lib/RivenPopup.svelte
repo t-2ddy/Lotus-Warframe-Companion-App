@@ -12,6 +12,8 @@
     wanted: boolean | null;
     /** Spliced trait whose range isn't known yet: shown, not graded. */
     pending?: boolean;
+    /** A stat this riven type can't roll any more (DE removed it): shown, not graded. */
+    legacy?: boolean;
   };
 
   export type RivenInfo = {
@@ -139,7 +141,9 @@
                 {#if !s.good && s.wanted === true}<span class="tag">harmless</span>{/if}
               </td>
               {#if s.pending}
-                <td colspan="3" class="pending">Collecting data: spliced or new trait, range not known yet</td>
+                <td colspan="3" class="pending">
+                  {s.legacy ? "No longer rolls: DE removed it from this riven type" : "Collecting data: spliced or new trait, range not known yet"}
+                </td>
                 <td><span class="letter letter-p">?</span></td>
               {:else}
               <td class="end">{s.worst}</td>

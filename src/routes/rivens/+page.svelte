@@ -20,6 +20,8 @@
     wanted: boolean | null;
     /** Spliced trait whose range isn't known yet: shown, not graded. */
     pending?: boolean;
+    /** A stat this riven type can't roll any more (DE removed it): shown, not graded. */
+    legacy?: boolean;
   };
   type Riven = {
     id: string;
@@ -127,6 +129,7 @@
   }
 
   function statHelp(s: Stat) {
+    if (s.legacy) return "No longer rolls on this riven type (DE removed it), so it isn't graded";
     if (s.pending) return "Spliced trait: its roll range isn't known yet, so it isn't graded (collecting data)";
     const role = s.good
       ? s.wanted === true
@@ -237,7 +240,7 @@
                 {#if !s.good && s.wanted === true}<span class="harmless">harmless</span>{/if}
               </span>
               {#if s.pending}
-                <span class="collecting">collecting data</span>
+                <span class="collecting">{s.legacy ? "no longer rolls" : "collecting data"}</span>
               {:else}
                 <span class="letter letter-{letterClass(s.letter)}">{s.letter}</span>
               {/if}

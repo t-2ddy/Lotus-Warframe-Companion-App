@@ -526,13 +526,24 @@ impl Controller {
         }
     }
 
-    /// A new chat-link card is on screen.
+    /// A new chat-link card is on screen, or a read of the shown one with different text.
     fn show_inspected(&mut self, card: Card) {
         let seen = Instant::now();
-        self.fits_in = None;
-        self.fits_tries = 0;
-        self.look_at_fits_in(&card);
-        let panel = self.identify_inspected(&card, seen);
+        // The riven already worked out, read again with different numbers: same dialog, so the
+        // "Fits in" weapon still holds.
+        let worked_out = matches!(&self.session, Some(Session::Inspect { card: shown, panel, .. })
+            if card::norm(&shown.title) == card::norm(&card.title) && panel.status == "ready");
+        if !worked_out {
+            self.fits_in = None;
+            self.fits_tries = 0;
+            self.look_at_fits_in(&card);
+        }
+        let panel = self.identify_inspected(&card, seen, !worked_out);
+        if worked_out && panel.status != "ready" {
+            // A misread of it ("+111.7%" read as "+1 1 .70/0"): keep what worked out.
+            olog!("kept {}: a re-read didn't work out, taken as a misread ({:?})", card.title, card.stat_lines);
+            return;
+        }
         olog!("read {} ({})", card.title, panel.status);
         self.session = Some(Session::Inspect { card, panel, seen });
         self.publish();
@@ -544,7 +555,7 @@ impl Controller {
         let Some(Session::Inspect { card, panel: old, seen }) = &self.session else { return };
         let key = |p: &Panel| (p.status, p.note.clone(), p.riven.as_ref().map(|v| (v.weapon.clone(), v.disposition, v.rank, v.kind.clone())));
         let (card, seen, before) = (card.clone(), *seen, key(old));
-        let panel = self.identify_inspected(&card, seen);
+        let panel = self.identify_inspected(&card, seen, true);
         if key(&panel) == before {
             return;
         }
@@ -555,7 +566,8 @@ impl Controller {
 
     /// Identifies a chat-link card with what the log has said about it so far. While the card is
     /// new it may come back "fetching" (waiting for the log); after [`WAIT_FOR_LOG`] it settles.
-    fn identify_inspected(&mut self, card: &Card, seen: Instant) -> Panel {
+    /// `record`: a failure goes in the misfit log (not for a misread of a riven already shown).
+    fn identify_inspected(&mut self, card: &Card, seen: Instant, record: bool) -> Panel {
         let weapon = self.weapon_for_card(seen);
         let types = self.type_candidates(card, weapon.as_deref(), Some(seen));
         // Waiting only helps when the weapon wasn't recognised (the log may still name the type);
@@ -568,7 +580,7 @@ impl Controller {
             // Likely a read of the card fading in: say "reading" while it's read again.
             panel.status = "reading";
             panel.message = None;
-        } else if panel.status == "failed" {
+        } else if panel.status == "failed" && record {
             self.record_misfit(card, &panel, weapon.as_deref(), &types);
         }
         panel
@@ -848,10 +860,24 @@ impl Controller {
         self.ocr(region_name(region), &shot, &info)
     }
 
-    /// OCRs a screen copy (upscaled 2x) into a card. Saves the image to `overlay-debug` and logs
-    /// the text when it changes.
+    /// OCRs a screen copy into a card: reads a few cleaned-up copies at once (see
+    /// [`screen::ocr_variants`]) and takes what most of them agree on. Saves the first copy to
+    /// `overlay-debug` and logs the texts when they change.
     fn ocr(&mut self, name: &'static str, shot: &screen::Image, info: &str) -> Option<Card> {
-        self.ocr_lines(name, shot, info).and_then(|lines| parse_card(&lines))
+        let variants = screen::ocr_variants(shot);
+        if let Some(dir) = debug_dir() {
+            let _ = screen::save_bmp(&variants[0], &dir.join(format!("{name}.bmp")));
+        }
+        let reads = read_variants(&variants);
+        let texts: Vec<String> = reads.iter().map(|r| r.as_ref().map_or_else(|e| format!("({e})"), |l| l.join(" / "))).collect();
+        // The first copy's text is the one kept for the misfit log.
+        let first = texts[0].clone();
+        if self.last_text.get(name) != Some(&first) {
+            olog!("ocr {name} ({info}): {}", if texts.iter().all(|t| t.is_empty()) { "(nothing)".to_string() } else { texts.join(" || ") });
+            self.last_text.insert(name, first);
+        }
+        let cards: Vec<Card> = reads.into_iter().filter_map(Result::ok).filter_map(|lines| parse_card(&lines)).collect();
+        card::consensus(&cards)
     }
 
     /// OCRs a screen copy (upscaled 2x) into lines, saving the image and logging changed text.
@@ -1575,6 +1601,15 @@ pub fn overlay_state() -> OverlayState {
     STATE.lock().unwrap().clone().unwrap_or_default()
 }
 
+/// OCRs each copy on its own thread (each has its own OCR engine), so all of them take about as
+/// long as one read.
+fn read_variants(variants: &[screen::Image]) -> Vec<Result<Vec<String>, String>> {
+    std::thread::scope(|s| {
+        let handles: Vec<_> = variants.iter().map(|v| s.spawn(move || ocr::read_lines(v))).collect();
+        handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("OCR thread panicked".into()))).collect()
+    })
+}
+
 /// The overlay page's "Done" button: back to click-through.
 #[tauri::command]
 pub fn overlay_done() {
@@ -1594,8 +1629,8 @@ mod screenshot_tests {
     fn read(img: &screen::Image, region: Region) -> Option<Card> {
         let game = GameWindow { hwnd: 0, x: 0, y: 0, width: img.width as i32, height: img.height as i32 };
         let (x, y, w, h) = region.on(&game);
-        let lines = ocr::read_lines(&screen::upscale2(&screen::crop(img, x, y, w, h))).unwrap();
-        parse_card(&lines)
+        let reads = read_variants(&screen::ocr_variants(&screen::crop(img, x, y, w, h)));
+        card::consensus(&reads.into_iter().filter_map(|r| parse_card(&r.unwrap())).collect::<Vec<_>>())
     }
 
     /// The lilac check spots riven cards and ignores the rest of the screen.
@@ -1725,3 +1760,4 @@ mod screenshot_tests {
         }
     }
 }
+

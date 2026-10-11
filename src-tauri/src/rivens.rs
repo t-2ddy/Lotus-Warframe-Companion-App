@@ -220,6 +220,44 @@ pub const SPLICED_PENDING: &[&str] = &[
 ];
 
 pub const PENDING_PREFIX: &str = "Pending:";
+/// A stat read off a card that this riven type can't roll any more (or never could), kept as
+/// read: `Legacy:WeaponZoomFovMod` when another type still rolls it, `Legacy:<label>` if not.
+pub const LEGACY_PREFIX: &str = "Legacy:";
+
+/// A stat this riven type can no longer roll: DE removes stats from types over time (negative
+/// Impact on older weapons' rivens, Zoom and Projectile Speed on shotgun rivens), and rivens
+/// rolled before keep them. Its data from a type that still rolls it, for the name and grading
+/// sheet; `None` if the type rolls it, it's spliced, or no type has it.
+pub fn legacy_stat(data: &RivenData, kind: &RivenType, tag: &str) -> Option<StatInfo> {
+    let tag = tag.strip_prefix(LEGACY_PREFIX).unwrap_or(tag);
+    if kind.stats.contains_key(tag) || spliced_element(tag).is_some() || tag.starts_with(PENDING_PREFIX) {
+        return None;
+    }
+    let mut found: Vec<(&String, &StatInfo)> = data.types.iter().filter_map(|(k, t)| t.stats.get(tag).map(|s| (k, s))).collect();
+    found.sort_by_key(|(k, _)| *k);
+    found.first().map(|(_, s)| (*s).clone())
+}
+
+/// A stat that only rolls as a negative: stored with a negative value and no name parts, so it
+/// can't be a positive (melee's "Chance to Gain Combo Count"). Spliced elements have no name
+/// parts either, but positive values.
+pub fn curse_only(s: &StatInfo) -> bool {
+    s.prefix.is_empty() && s.suffix.is_empty() && s.value < 0.0
+}
+
+/// The value a curse's numbers are worked out from: as stored, except a negative-only stat's
+/// is turned so its curse comes out negative, as the game shows it ("-12.4% Chance to Gain
+/// Combo Count").
+pub fn curse_base(s: &StatInfo) -> f64 {
+    if curse_only(s) { s.value.abs() } else { s.value }
+}
+
+/// A stat label without its number: `|val|% Zoom` → "Zoom".
+pub fn label_name(label: &str) -> String {
+    let rest = label.replace("|val|", "");
+    let rest = rest.trim_start();
+    rest.strip_prefix('%').or_else(|| rest.strip_prefix("s ")).unwrap_or(rest).trim().to_string()
+}
 
 /// A combined element's name from its tag: the game's on owned rivens (`WeaponViralDamageMod`,
 /// seen in a capture 2026-10-09) or the overlay's (`SplicedViral`).
@@ -243,7 +281,10 @@ pub fn stat_info(kind: &RivenType, tag: &str) -> Option<StatInfo> {
 
 /// A spliced trait, or one this riven type's data doesn't have: a combined element, a pending
 /// trait read off a card, or an unknown tag on an owned riven (`WeaponStatusDamage`).
-pub fn is_spliced(kind: &RivenType, tag: &str) -> bool {
+pub fn is_spliced(data: &RivenData, kind: &RivenType, tag: &str) -> bool {
+    if tag.starts_with(LEGACY_PREFIX) || legacy_stat(data, kind, tag).is_some() {
+        return false;
+    }
     tag.starts_with(PENDING_PREFIX) || spliced_element(tag).is_some() || !kind.stats.contains_key(tag)
 }
 
@@ -303,6 +344,9 @@ pub struct StatView {
     /// A spliced (or unrecognised) trait whose range isn't known yet: shown, not graded
     /// ("collecting data").
     pub pending: bool,
+    /// A stat this riven type can't roll any more (see [`legacy_stat`]): shown, not graded
+    /// ("no longer rolls"). Always `pending` too.
+    pub legacy: bool,
 }
 
 /// Roll letter, as in warframe-riven-info's `floatToGrade`: the roll mapped onto −10…+10.
@@ -457,7 +501,7 @@ fn riven_name(kind: &RivenType, buffs: &[Roll]) -> String {
 }
 
 /// Stat values at `rank` (RivenParser.js `parseRiven`), with each roll's quality and range.
-fn stats(kind: &RivenType, fp: &Fingerprint, disposition: f64, rank: u32) -> Vec<StatView> {
+fn stats(data: &RivenData, kind: &RivenType, fp: &Fingerprint, disposition: f64, rank: u32) -> Vec<StatView> {
     let atten = 1.5 * disposition * 10.0; // specific-fit attenuation × disposition × riven base drain
     let level = f64::from(rank + 1);
     let curse_atten = 1.25f64.powi(fp.curses.len() as i32);
@@ -478,16 +522,20 @@ fn stats(kind: &RivenType, fp: &Fingerprint, disposition: f64, rank: u32) -> Vec
             best: stat_text(tag, &s.label, value_at(best)),
             wanted: None,
             pending: false,
+            legacy: false,
         }
     };
     // A trait without numbers (a spliced one the data doesn't have): shown by name, ungraded
     // ("collecting data"). It still counts towards the buff and curse totals above. Pending tags
     // from a card are put back by the overlay with the card's own numbers.
+    // A stat the type can't roll any more: shown by name, ungraded ("no longer rolls"); its
+    // numbers for this type aren't known.
     let unknown = |out: &mut Vec<StatView>, tag: &str, good: bool| {
-        if !tag.starts_with(PENDING_PREFIX) {
+        if !tag.starts_with(PENDING_PREFIX) && !tag.starts_with(LEGACY_PREFIX) {
+            let legacy = legacy_stat(data, kind, tag);
             out.push(StatView {
                 tag: tag.to_string(),
-                text: trait_name(tag),
+                text: legacy.as_ref().map_or_else(|| trait_name(tag), |s| label_name(&s.label)),
                 good,
                 quality: 0.0,
                 letter: "?".into(),
@@ -495,6 +543,7 @@ fn stats(kind: &RivenType, fp: &Fingerprint, disposition: f64, rank: u32) -> Vec
                 best: String::new(),
                 wanted: None,
                 pending: true,
+                legacy: legacy.is_some(),
             });
         }
     };
@@ -514,13 +563,14 @@ fn stats(kind: &RivenType, fp: &Fingerprint, disposition: f64, rank: u32) -> Vec
         };
         let s = &s;
         let n = at(&CURSE_BUFF_ATTEN, fp.buffs.len()) * at(&BUFF_COUNT_ATTEN, fp.curses.len());
-        out.push(make(&c.tag, s, &|f| -s.value * atten * lerp(f) * n * level, c.value, false));
+        let base = curse_base(s);
+        out.push(make(&c.tag, s, &|f| -base * atten * lerp(f) * n * level, c.value, false));
     }
     out
 }
 
 /// Grades a riven with the sheet and marks each stat as wanted / harmless.
-fn apply_grade(r: &mut RivenView, sheet: &GradeSheet) {
+pub(crate) fn apply_grade(r: &mut RivenView, sheet: &GradeSheet) {
     let Some(rule) = rule_for(sheet, &r.kind, &r.weapon) else { return };
     let buffs: Vec<&str> = r.stats.iter().filter(|s| s.good).map(|s| s.tag.as_str()).collect();
     let curses: Vec<&str> = r.stats.iter().filter(|s| !s.good).map(|s| s.tag.as_str()).collect();
@@ -563,10 +613,10 @@ pub fn view_with(
     let compat = fp.compat.clone().unwrap_or_default();
     let weapon = data.weapons.get(&compat);
     let disposition = disposition.unwrap_or_else(|| weapon.map_or(1.0, |w| w.disposition));
-    let stats = stats(kind, &fp, disposition, show_rank);
+    let stats = stats(data, kind, &fp, disposition, show_rank);
     let graded: Vec<f64> = stats.iter().filter(|s| !s.pending).map(|s| s.quality).collect();
     let perfectness = if graded.is_empty() { 0.0 } else { 100.0 * graded.iter().sum::<f64>() / graded.len() as f64 };
-    let spliced = fp.buffs.iter().chain(&fp.curses).any(|r| is_spliced(kind, &r.tag));
+    let spliced = fp.buffs.iter().chain(&fp.curses).any(|r| is_spliced(data, kind, &r.tag));
     let mut view = RivenView {
         id: r.id.clone(),
         item_type: r.item_type.clone(),
@@ -751,6 +801,23 @@ mod tests {
         // Types that already list it are unchanged; melee keeps its own tags.
         let melee = &d.types["PlayerMeleeWeaponRandomModRare"];
         assert!(!melee.stats.contains_key("WeaponFactionDamageInfested"));
+    }
+
+    #[test]
+    fn owned_rivens_keep_removed_stats() {
+        // An older shotgun riven with negative Zoom, which shotguns can't roll any more.
+        // (Made-up rolls.)
+        let d = data();
+        let r = OwnedRiven {
+            id: "s".into(),
+            item_type: "/Lotus/Upgrades/Mods/Randomized/LotusShotgunRandomModRare".into(),
+            fingerprint: r#"{"compat":"/Lotus/Weapons/Tenno/Shotgun/Shotgun","lvl":8,"buffs":[{"Tag":"WeaponCritChanceMod","Value":500000000},{"Tag":"WeaponCritDamageMod","Value":500000000}],"curses":[{"Tag":"WeaponZoomFovMod","Value":500000000}]}"#.into(),
+        };
+        let v = view(&d, &GradeSheet::default(), &r, MAX_RANK).unwrap();
+        let zoom = v.stats.iter().find(|s| s.tag == "WeaponZoomFovMod").unwrap();
+        assert_eq!((zoom.text.as_str(), zoom.legacy, zoom.pending), ("Zoom", true, true));
+        assert!(!v.grade_pending, "graded from its other stats");
+        assert!(v.stats.iter().filter(|s| !s.legacy).all(|s| s.letter != "?"));
     }
 
     #[test]

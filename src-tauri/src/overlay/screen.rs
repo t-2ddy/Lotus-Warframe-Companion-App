@@ -223,6 +223,31 @@ pub fn save_bmp(img: &Image, path: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(path, out)
 }
 
+/// The card cleaned up a few different ways for OCR, each doubled in size: as shown, then as
+/// dark text on light (by brightness, contrast-stretched brightness, and brightest channel).
+/// OCR's slips differ between them ("+1 91 .1%" in one, "+191.10/0" in another), so reading
+/// all of them and taking the majority (see `card::consensus`) beats any single read.
+pub fn ocr_variants(img: &Image) -> Vec<Image> {
+    let lum = |r: i32, g: i32, b: i32| (r * 299 + g * 587 + b * 114) / 1000;
+    let stretch = |v: i32, low: i32, span: i32| (255 - (v - low).clamp(0, span) * 255 / span) as u8;
+    vec![
+        upscale2(img),
+        upscale2(&grey(img, |r, g, b| (255 - lum(r, g, b)) as u8)),
+        upscale2(&grey(img, |r, g, b| stretch(lum(r, g, b), 40, 140))),
+        upscale2(&grey(img, |r, g, b| stretch(r.max(g).max(b), 50, 150))),
+    ]
+}
+
+/// Each pixel mapped to a grey level from its red, green and blue.
+fn grey(img: &Image, f: impl Fn(i32, i32, i32) -> u8) -> Image {
+    let mut bgra = img.bgra.clone();
+    for p in bgra.chunks_exact_mut(4) {
+        let v = f(i32::from(p[2]), i32::from(p[1]), i32::from(p[0]));
+        p.copy_from_slice(&[v, v, v, 255]);
+    }
+    Image { width: img.width, height: img.height, bgra }
+}
+
 /// Doubles the size with bilinear filtering (OCR reads the game's small card text much better).
 pub fn upscale2(img: &Image) -> Image {
     let (w, h) = (img.width as usize, img.height as usize);

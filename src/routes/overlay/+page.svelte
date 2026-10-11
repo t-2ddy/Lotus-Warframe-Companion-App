@@ -238,7 +238,11 @@
               <li class:good={s.good} class:bad={!s.good} class:wanted={s.good && s.wanted === true}>
                 <span class="stext">{s.text}</span>
                 {#if s.pending}
-                  <span class="pending" title="Spliced or new trait: its roll range isn't known yet, so it isn't graded">collecting data</span>
+                  {#if s.legacy}
+                    <span class="pending" title="No longer rolls on this riven type (DE removed it), so it isn't graded">no longer rolls</span>
+                  {:else}
+                    <span class="pending" title="Spliced or new trait: its roll range isn't known yet, so it isn't graded">collecting data</span>
+                  {/if}
                 {:else}
                   <span class="letter {letterClass(s.letter)}">{s.letter}</span>
                   <span class="bar"><span style="width: {s.quality * 100}%"></span></span>

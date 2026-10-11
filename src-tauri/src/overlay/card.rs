@@ -39,7 +39,8 @@ pub struct Card {
     /// The stat lines as read, wrapped labels joined (`-46.2% Magazine Capacity`), for showing
     /// the card before it's worked out.
     pub stat_lines: Vec<String>,
-    /// Stat labels read without their number (a card still fading in): it can't be worked out.
+    /// Stats whose number wasn't read (a card still fading in) or was misread past saving
+    /// (four digits before the point): it can't be worked out.
     pub lost_numbers: usize,
 }
 
@@ -68,6 +69,9 @@ impl Card {
 pub fn norm(s: &str) -> String {
     s.chars().filter(|c| c.is_alphabetic()).flat_map(char::to_lowercase).collect()
 }
+
+/// No riven stat reaches four digits before the decimal point; a number that does is a misread.
+const MAX_STAT: f64 = 1000.0;
 
 /// Finds the number in a stat line: a sign (`+`, `-`, `x`) followed by digits, tolerating stray
 /// spaces (`+191 .1%`). Returns (value, unit, label text).
@@ -98,16 +102,26 @@ fn stat_line(line: &str) -> Option<(f64, Unit, String)> {
                         break;
                     }
                 }
-                // "%" read as "0/0" ("+57.70/0" for "+57.7%"): the first 0 joined the number.
+                // "%" read as "0/0" ("+57.70/0" for "+57.7%", "+1 090/0" for "+109%"): the first
+                // 0 joined the number. Nothing else on a card has a "/" after a number.
                 let percent_as_slash = num.ends_with('0')
-                    && num.contains('.')
+                    && num.len() > 1
                     && chars.get(j) == Some(&'/')
                     && chars.get(j + 1).is_some_and(|n| matches!(n, '0' | 'o' | 'O'));
                 if percent_as_slash {
                     num.pop();
                     j += 2;
                 }
-                let mut value: f64 = num.trim_end_matches('.').parse().ok()?;
+                // Riven stats never reach four digits before the point, and cards show at most
+                // one decimal: four or more digits without a point lost it ("+1374%" is 137.4%).
+                // With a point it can't be told (see `MAX_STAT`).
+                let num = num.trim_end_matches('.');
+                let num = if !num.contains('.') && num.len() >= 4 {
+                    format!("{}.{}", &num[..num.len() - 1], &num[num.len() - 1..])
+                } else {
+                    num.to_string()
+                };
+                let mut value: f64 = num.parse().ok()?;
                 let mut unit = if matches!(c, 'x' | 'X') { Unit::Times } else { Unit::Plain };
                 if percent_as_slash {
                     unit = Unit::Percent;
@@ -139,6 +153,49 @@ fn stat_line(line: &str) -> Option<(f64, Unit, String)> {
 /// One stat line on its own (`+191.1% Critical Chance`).
 pub fn parse_stat(line: &str) -> Option<CardStat> {
     stat_line(line).map(|(value, unit, label)| CardStat { value, unit, label })
+}
+
+/// The most common item (ties go to the one seen first).
+fn vote<T: PartialEq + Clone>(items: impl IntoIterator<Item = T>) -> Option<T> {
+    let mut counts: Vec<(T, usize)> = Vec::new();
+    for item in items {
+        match counts.iter_mut().find(|(seen, _)| *seen == item) {
+            Some((_, n)) => *n += 1,
+            None => counts.push((item, 1)),
+        }
+    }
+    let best = counts.iter().map(|(_, n)| *n).max()?;
+    counts.into_iter().find(|(_, n)| *n == best).map(|(item, _)| item)
+}
+
+/// One card from several reads of it (OCR of differently cleaned-up copies, best first): each
+/// field takes what most reads agree on. OCR's slips differ between reads, so the majority is
+/// right far more often than any one read. `None` if no read was a card.
+pub fn consensus(reads: &[Card]) -> Option<Card> {
+    let title_key = vote(reads.iter().map(|c| norm(&c.title)))?;
+    let count = vote(reads.iter().filter(|c| norm(&c.title) == title_key).map(|c| c.stats.len()))?;
+    let agreeing: Vec<&Card> = reads.iter().filter(|c| norm(&c.title) == title_key && c.stats.len() == count).collect();
+    let stats: Vec<CardStat> = (0..count)
+        .map(|i| {
+            // Number and unit together, to a tenth (the precision cards show).
+            let (value, unit) = vote(agreeing.iter().map(|c| ((c.stats[i].value * 100.0).round() as i64, c.stats[i].unit)))
+                .map_or((0.0, Unit::Plain), |(v, u)| (v as f64 / 100.0, u));
+            // A label hidden by its icon reads as nothing in some copies: any read beats none.
+            let label = vote(agreeing.iter().map(|c| c.stats[i].label.clone()).filter(|l| !l.is_empty())).unwrap_or_default();
+            CardStat { value, unit, label }
+        })
+        .collect();
+    // The title and stat lines as shown: from the first read with the most agreed numbers.
+    let matching = |c: &Card| c.stats.iter().zip(&stats).filter(|(a, b)| (a.value - b.value).abs() < 0.005).count();
+    let best = agreeing.iter().copied().reduce(|best, c| if matching(c) > matching(best) { c } else { best })?;
+    Some(Card {
+        title: best.title.clone(),
+        stats,
+        mastery: vote(reads.iter().filter_map(|c| c.mastery)),
+        rerolls: vote(reads.iter().filter_map(|c| c.rerolls)),
+        stat_lines: best.stat_lines.clone(),
+        lost_numbers: vote(agreeing.iter().map(|c| c.lost_numbers)).unwrap_or(0),
+    })
 }
 
 /// Parses OCR lines of one card. `None` unless it has a title and at least two stats.
@@ -177,6 +234,9 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
             // a readable label, except a bare percentage whose label hid behind an icon.
             let plausible = label.len() >= 3 || (unit == Unit::Percent && label.is_empty());
             if !title_parts.is_empty() && plausible {
+                if value.abs() >= MAX_STAT {
+                    lost_numbers += 1; // misread past saving: read the card again
+                }
                 stats.push(CardStat { value, unit, label });
                 stat_lines.push(line.to_string());
                 continue;
@@ -330,7 +390,50 @@ pub fn match_label(kind: &RivenType, ocr: &str) -> Option<String> {
     // Last: a little junk after a label (the card's edge, a misread MR line). After the cut-off
     // rule, so "criticalchancefor" is Critical Chance for Slide Attack, not Critical Chance.
     let tail_ok = |k: &str| k.len() >= 6 && ocr.starts_with(k) && ocr.len() - k.len() <= 4;
-    keys.iter().filter(|(_, k)| tail_ok(k)).max_by_key(|(_, k)| k.len()).map(|(t, _)| t.clone())
+    if let Some((tag, _)) = keys.iter().filter(|(_, k)| tail_ok(k)).max_by_key(|(_, k)| k.len()) {
+        return Some(tag.clone());
+    }
+    // Misread letters ("Mulitshot", "Critica1 Damage"): a label a letter away (two for long
+    // ones), allowing for icon junk before it, if only one stat is that close.
+    let close = |k: &str| {
+        let allowed = if k.len() >= 8 { 2 } else { 1 };
+        let ocr: Vec<char> = ocr.chars().collect();
+        (0..=3.min(ocr.len().saturating_sub(4)))
+            .map(|skip| edit_distance(&ocr[skip..], &k.chars().collect::<Vec<_>>()) + skip.min(1))
+            .min()
+            .filter(|d| *d <= allowed)
+    };
+    let mut near: Vec<(usize, &String)> = keys.iter().filter_map(|(t, k)| close(k).map(|d| (d, t))).collect();
+    near.sort();
+    match near.as_slice() {
+        [(d, t), rest @ ..] if rest.iter().all(|(d2, t2)| d2 > d || t2 == t) => Some((*t).clone()),
+        _ => None,
+    }
+}
+
+/// Letters to add, drop or change to turn one word into the other.
+fn edit_distance(a: &[char], b: &[char]) -> usize {
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
+/// The tag of a stat another riven type rolls but `kind` doesn't (`zoom` on a shotgun riven →
+/// `WeaponZoomFovMod`).
+fn legacy_tag(data: &RivenData, kind: &RivenType, label: &str) -> Option<String> {
+    let mut others: Vec<(&String, &RivenType)> = data.types.iter().collect();
+    others.sort_by_key(|(k, _)| *k);
+    others.into_iter().find_map(|(_, other)| {
+        match_label(other, label).filter(|t| rivens::legacy_stat(data, kind, t).is_some())
+    })
 }
 
 /// Stat tags spelled out by a riven's name: prefixes start each `-` part, the suffix ends it
@@ -486,11 +589,19 @@ pub fn rebuild(
     // Tags: from the label; a readable label that matches nothing is a trait the data doesn't
     // have yet (a new splice), shown as read and ungraded so the rest of the riven still works
     // out; a missing label (next to a red icon) from the name's stat parts not already used.
+    // A readable label this type doesn't roll and that isn't spliced: a stat DE has since
+    // removed from the type (kept as read, "no longer rolls"), under its own tag when another
+    // type still rolls it.
     let mut tags: Vec<Option<String>> = card.stats.iter().map(|s| match_label(kind, &s.label)).collect();
     for (i, t) in tags.iter_mut().enumerate() {
-        if t.is_none() && card.stats[i].label.len() >= 6 {
+        if t.is_some() {
+            continue;
+        }
+        if let Some(tag) = legacy_tag(data, kind, &card.stats[i].label) {
+            *t = Some(format!("{}{tag}", rivens::LEGACY_PREFIX));
+        } else if card.stats[i].label.len() >= 6 {
             let name = card.stat_lines.get(i).map_or_else(|| card.stats[i].label.clone(), |l| label_text(l));
-            *t = Some(format!("{}{name}", rivens::PENDING_PREFIX));
+            *t = Some(format!("{}{name}", rivens::LEGACY_PREFIX));
         }
     }
     let mut spare: Vec<String> =
@@ -566,8 +677,10 @@ fn rebuild_tagged(
             continue;
         };
         let raw = raw_value(stat, &info.label);
-        let is_buff = raw.signum() == info.value.signum();
-        lines.push((tag.clone(), raw, is_buff, info.value, display_step(stat, &info.label)));
+        // A curse goes against the stat's usual direction; a negative-only stat is always one.
+        let is_buff = !rivens::curse_only(&info) && raw.signum() == info.value.signum();
+        let base = if is_buff { info.value } else { rivens::curse_base(&info) };
+        lines.push((tag.clone(), raw, is_buff, base, display_step(stat, &info.label)));
         buff_at.push(is_buff);
     }
     let nb = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count();
@@ -627,26 +740,38 @@ fn rebuild_tagged(
     let mut view = rivens::view_with(data, sheet, &owned, rank, Some(disposition)).ok_or("couldn't build the riven")?;
     view.name = card.riven_name().to_string(); // the game's name, as shown
     if !pending.is_empty() {
-        add_pending(&mut view, card, &pending, &buff_at);
+        add_pending(data, kind, &mut view, card, &pending, &buff_at);
+        // Graded again with the removed stats back in place (the sheet judges a negative Zoom
+        // by its tag); spliced traits still leave it ungraded.
+        if !view.grade_pending {
+            rivens::apply_grade(&mut view, sheet);
+        }
     }
     Ok(Identified { view, rank_assumed })
 }
 
 /// Puts the not-yet-graded spliced traits back in their places on the card, as shown.
-fn add_pending(view: &mut RivenView, card: &Card, pending: &[(usize, String, bool)], buff_at: &[bool]) {
+fn add_pending(data: &RivenData, kind: &RivenType, view: &mut RivenView, card: &Card, pending: &[(usize, String, bool)], buff_at: &[bool]) {
     let (mut buffs, mut curses): (Vec<_>, Vec<_>) = std::mem::take(&mut view.stats).into_iter().partition(|s| s.good);
     buffs.reverse();
     curses.reverse();
     for (i, stat) in card.stats.iter().enumerate() {
         if let Some((_, tag, is_buff)) = pending.iter().find(|p| p.0 == i) {
-            let name = tag.trim_start_matches(rivens::PENDING_PREFIX);
+            // A removed stat goes back under its own tag (for the grading sheet) and name.
+            let legacy = tag.strip_prefix(rivens::LEGACY_PREFIX);
+            let known = legacy.and_then(|t| rivens::legacy_stat(data, kind, t));
+            let shown_tag = if known.is_some() { legacy.unwrap_or(tag).to_string() } else { tag.clone() };
+            let name = match &known {
+                Some(s) => rivens::label_name(&s.label),
+                None => tag.trim_start_matches(rivens::PENDING_PREFIX).trim_start_matches(rivens::LEGACY_PREFIX).to_string(),
+            };
             let number = match stat.unit {
                 Unit::Times => format!("x{:.2}", stat.value),
                 Unit::Percent => format!("{:+}%", stat.value),
                 Unit::Plain => format!("{:+}", stat.value),
             };
             view.stats.push(rivens::StatView {
-                tag: tag.clone(),
+                tag: shown_tag,
                 text: format!("{number} {name}"),
                 good: *is_buff,
                 quality: 0.0,
@@ -655,6 +780,7 @@ fn add_pending(view: &mut RivenView, card: &Card, pending: &[(usize, String, boo
                 best: String::new(),
                 wanted: None,
                 pending: true,
+                legacy: legacy.is_some(),
             });
         } else if let Some(s) = if buff_at[i] { buffs.pop() } else { curses.pop() } {
             view.stats.push(s);
@@ -1058,6 +1184,132 @@ mod slash_icon_tests {
         assert_eq!((r.view.rank, r.view.disposition), (0, 0.6));
         // Wrapped labels still join.
         assert_eq!(card("Torid Acri-caricron / +196.1% Critical Chance / -46.2% Magazine / Capacity").lost_numbers, 0);
+    }
+
+    #[test]
+    fn misread_labels_match_the_closest_stat() {
+        let d = rivens::data();
+        let d = &*d;
+        let rifle = &d.types["LotusRifleRandomModRare"];
+        let tag = |ocr: &str| match_label(rifle, ocr);
+        assert_eq!(tag("mulitshot").as_deref(), Some("WeaponFireIterationsMod"));
+        assert_eq!(tag("multisnot").as_deref(), Some("WeaponFireIterationsMod"));
+        assert_eq!(tag("criticadamage").as_deref(), Some("WeaponCritDamageMod"), "\"Critica1 Damage\"");
+        assert_eq!(tag("criticaldarnage").as_deref(), Some("WeaponCritDamageMod"), "rn for m");
+        assert_eq!(tag("vmultishot").as_deref(), Some("WeaponFireIterationsMod"), "icon junk");
+        // Real traits stay themselves, and something new isn't forced onto a stat.
+        assert_eq!(tag("statusdamage").as_deref(), Some("Pending:Status Damage"));
+        assert_eq!(tag("statuschance").as_deref(), Some("WeaponStunChanceMod"));
+        assert_eq!(tag("brandnewthing"), None);
+    }
+
+    #[test]
+    fn several_reads_vote() {
+        // reroll (1).png read four ways (2026-10-10): each slip is in a different read.
+        let reads: Vec<Card> = [
+            "Burston Crita-lexitis / +1 91 .1% Critical Chance / +3.4 Punch Through / +137.4% Critical Damage / O -132.2% VPuncture / MR 15 / 094",
+            "Burston Crita-lexitis / +191 Critical Chance / +34 Punch Through / +137.4% Critical Damage / O -132.2% Y Puncture / MR 15",
+            "Burston Crita-lexitis / +191.10/0 Critical Chance / +3.4 punch Through / +1374% Critical Damage / O -132.2% MPuncture / MR 15 / 094",
+            "Burston Crita-lexitis / +191.1% Critical Chance / +3.4 Punch Through / +137.4% Critical Damage / 0-132.2% YPuncture , / MR13",
+        ]
+        .iter()
+        .filter_map(|t| parse_card(&t.split(" / ").map(String::from).collect::<Vec<_>>()))
+        .collect();
+        let c = consensus(&reads).unwrap();
+        let values: Vec<(f64, Unit)> = c.stats.iter().map(|s| (s.value, s.unit)).collect();
+        assert_eq!(values, [(191.1, Unit::Percent), (3.4, Unit::Plain), (137.4, Unit::Percent), (-132.2, Unit::Percent)]);
+        assert_eq!((c.title.as_str(), c.mastery, c.rerolls), ("Burston Crita-lexitis", Some(15), Some(94)));
+        // A label only some reads saw (the Slash icon hides it in others) is kept.
+        let slash: Vec<Card> = ["Burston Acri-hexasus / +143.2% / +159.2% Critical Damage", "Burston Acri-hexasus / +143.2% qSlash / +159.2% Critical Damage"]
+            .iter()
+            .filter_map(|t| parse_card(&t.split(" / ").map(String::from).collect::<Vec<_>>()))
+            .collect();
+        assert_eq!(consensus(&slash).unwrap().stats[0].label, "qslash");
+        assert!(consensus(&[]).is_none());
+    }
+
+    #[test]
+    fn removed_stats_are_shown_as_no_longer_rolling() {
+        // riven_misfits.jsonl 2026-10-10: shotgun rivens can't roll Zoom any more, but this
+        // Sobek riven has it ("stat not recognised: zoom").
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Sobek Acri-satitox / +6.9% z Toxin / +7.8% Critical Damage / +9.6% Multishot / -2.6% Zoom / MR 16 / 056 \\");
+        let kuva = Some("/Lotus/Weapons/Grineer/KuvaLich/LongGuns/Sobek/KuvaSobek");
+        let r = rebuild(d, &GradeSheet::default(), "LotusShotgunRandomModRare", &c, kuva, None).unwrap();
+        let zoom = &r.view.stats[3];
+        assert_eq!((zoom.tag.as_str(), zoom.text.as_str(), zoom.good), ("WeaponZoomFovMod", "-2.6% Zoom", false));
+        assert!(zoom.legacy && zoom.pending && zoom.letter == "?");
+        assert!(r.view.stats[..3].iter().all(|s| !s.pending && s.letter != "?"), "{:?}", r.view.stats);
+        assert!(!r.view.grade_pending, "a removed stat doesn't stop the grade");
+        // A label no type has (and not a known splice) is kept the same way.
+        let odd = card("Torid Crita-acriata / +198.6% Critical Chance / +152.1% Critical Damage / +60.2% Brand New Thing / -90% Projectile Speed");
+        let r = rebuild(d, &GradeSheet::default(), "LotusRifleRandomModRare", &odd, Some("/Lotus/Weapons/ClanTech/Bio/BioWeapon"), None).unwrap();
+        assert!(r.view.stats[2].legacy && r.view.stats[2].text == "+60.2% Brand New Thing");
+        // Known splices are still "collecting data", not removed.
+        let melee = &d.types["PlayerMeleeWeaponRandomModRare"];
+        assert_eq!(match_label(melee, "slamattackdamage").as_deref(), Some("Pending:Slam Attack Damage"));
+    }
+
+    #[test]
+    fn negative_only_stats_are_curses() {
+        // riven_misfits.jsonl 2026-10-10: "Chance to Gain Combo Count" is stored with a negative
+        // value, so "-12.4%" matched its sign and was counted as a positive (4 positives, no
+        // negative), and nothing fit.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Magistar Laci-acrium / +1 1.5% Critical Damage / +17.8% Slam Attack / Damage / +3.1 Initial Combo / -12.4% Chance to Gain / Combo Count / MR 15 / 073");
+        assert_eq!(c.stats[0].value, 11.5);
+        let magistar = Some("/Lotus/Weapons/Tenno/Melee/Maces/PaladinMace/PaladinMaceWeapon");
+        let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &c, magistar, None).unwrap();
+        let combo = r.view.stats.iter().find(|s| s.tag == "WeaponMeleeComboPointsOnHitMod").unwrap();
+        assert!(!combo.good, "it's the curse");
+        assert_eq!(combo.text, "-12.4% Chance to Gain Combo Count", "shown negative, as on the card");
+        assert_eq!(r.view.rank, 0);
+    }
+
+    #[test]
+    fn whole_percentages_read_with_a_slash() {
+        // riven_misfits.jsonl 2026-10-10: "+109%" read as "+1 090/0" became a plain 1090.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Torid Crita-zetitox / +198.7% Critical Chance / +1 090/0 z Toxin / -111.7% Weapon Recoil / -47.6% Magazine / Capacity / MR 12 / 0201 \\");
+        assert_eq!(c.stats[1], CardStat { value: 109.0, unit: Unit::Percent, label: "ztoxin".into() });
+        let torid = Some("/Lotus/Weapons/ClanTech/Bio/BioWeapon");
+        let r = rebuild(d, &GradeSheet::default(), "LotusRifleRandomModRare", &c, torid, None).unwrap();
+        let recoil = r.view.stats.iter().find(|s| s.tag == "WeaponRecoilReductionMod").unwrap();
+        assert!(recoil.good, "less recoil is a positive");
+        let magazine = r.view.stats.iter().find(|s| s.tag == "WeaponClipMaxMod").unwrap();
+        assert!(!magazine.good, "the one negative");
+        assert_eq!(r.view.rank, 8);
+    }
+
+    #[test]
+    fn stats_never_reach_four_digits() {
+        // A lost decimal point: four digits without one is the last digit after the point.
+        let c = card("Burston Crita-lexitis / +191.1% Critical Chance / +1374% Critical Damage / MR 15");
+        assert_eq!((c.stats[1].value, c.stats[1].unit, c.lost_numbers), (137.4, Unit::Percent, 0));
+        assert_eq!(card("Torid Crita-zetitox / +198.7% Critical Chance / +1 090/0 z Toxin").stats[1].value, 109.0);
+        // Four digits before a point can't be fixed: read the card again rather than grade it.
+        let bad = card("Burston Crita-lexitis / +1191.1% Critical Chance / +137.4% Critical Damage / MR 15");
+        assert_eq!(bad.lost_numbers, 1);
+        // Three digits are fine.
+        assert_eq!(card("Torid Crita-acriata / +198.6% Critical Chance / +152.1% Critical Damage").lost_numbers, 0);
+    }
+
+    #[test]
+    fn weapons_newer_than_the_export() {
+        // riven_misfits.jsonl 2026-10-10: Corufell Prime (0.5) isn't in the export, so the card
+        // was worked out at Corufell's 1.05 and nothing fit. It comes from the wiki now.
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Corufell Igni-acrinus / +34.8% Critical Damage / +36.6% 6Heat / +20.8% Additional Combo / Count Chance / MR 15 / 07");
+        let prime = "/Lotus/Weapons/Tenno/Archwing/Melee/PrimeCorufell/PrimeCorufellScytheWeapon";
+        assert_eq!(d.weapons[prime].disposition, 0.5);
+        assert!(variant_unknown(d, &c, None), "Corufell and Corufell Prime differ");
+        let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &c, Some(prime), None).unwrap();
+        assert_eq!((r.view.rank, r.view.disposition), (8, 0.5));
+        assert!(r.view.stats.iter().all(|s| s.letter != "?"));
     }
 
     #[test]

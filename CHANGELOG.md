@@ -5,6 +5,29 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Changed
+- Riven overlay: each card is read four times at once (as shown, and three cleaned-up
+  black-on-white copies) and every number and label takes the majority answer, so one bad read
+  ("+1 91 .1%", "+34") no longer breaks a riven. Takes about as long as one read did.
+- Riven overlay: misread stat labels ("Mulitshot", "Critica1 Damage") match the closest stat
+  when only one is that close.
+- Riven overlay: once a chat riven is worked out, a later misread of the same card (Torid
+  Sati-caritox's "+111.7%" read as "+1 1 .70/0") no longer replaces it with an error.
+- Riven overlay: whole percentages whose "%" OCR reads as "0/0" ("+109%" read as "+1 090/0")
+  are read as 109%, not 1090.
+- Riven overlay: riven stats never reach four digits before the decimal point, so a number
+  that does is a misread: one that lost its point ("+1374%") is read as 137.4%, and any other
+  makes the overlay read the card again instead of grading it.
+- Rivens: weapons newer than the game's data export (Corufell Prime, Steflos Prime, Quassus
+  Prime, Kuva Ghoulsaw) are taken from the Warframe wiki and join their family, so their rivens
+  work out at the right disposition (Corufell Prime 0.5, not Corufell's 1.05).
+- Rivens: "Chance to Gain Combo Count" (melee, negative only) is always the negative. A
+  "-12.4%" roll was counted as a positive, so cards with it didn't work out, and owned rivens
+  showed it as "+12.4%".
+- Rivens: a stat the riven's type can't roll any more (DE removed it, e.g. Zoom on shotgun
+  rivens) no longer stops the riven being read. It's shown with its number, marked "no longer
+  rolls" and left ungraded; the rest of the riven is graded as usual.
+
 ## [0.1.2] — 2026-10-10
 
 ### Fixed
