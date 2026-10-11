@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and the FAQ
+    url: https://github.com/t-2ddy/Lotus-Warframe-Companion-App#faq
+    about: Is it bannable, the SmartScreen warning, where your data lives, uninstalling.
+  - name: Report a security problem
+    url: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/security/advisories/new
+    about: Please report security problems privately, not as an issue.

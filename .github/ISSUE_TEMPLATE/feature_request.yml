@@ -1,0 +1,23 @@
+name: Feature request
+description: An idea for something Lotus could do or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would it help with?
+      description: The problem or the thing you want to do in Warframe.
+      placeholder: I want to see which relics I can still open for a set I'm missing.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Lotus to do?
+      description: How it could work. Screenshots or examples from other tools are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?

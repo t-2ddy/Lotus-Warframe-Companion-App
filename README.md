@@ -521,6 +521,12 @@ Data used by the app:
 
 Thanks to everyone who maintains these. Please respect each source's terms and rate limits.
 
+## Contributing
+
+Bug reports and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), the
+[changelog](CHANGELOG.md) and the [code of conduct](CODE_OF_CONDUCT.md). Please report security
+problems privately ([SECURITY.md](SECURITY.md)).
+
 ## Licence
 
 Lotus's code is under the [MIT licence](LICENSE). Warframe's artwork in `static/icons/` and the

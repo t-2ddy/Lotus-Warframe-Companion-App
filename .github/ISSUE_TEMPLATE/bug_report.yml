@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in Lotus doesn't work or shows the wrong thing.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For **overlay** problems (a riven card or reward read wrong), turn on
+        **Tools → Debug logging**, reproduce it, then attach `overlay.log` (Tools → Open folder).
+        Security problems: please use **Security → Report a vulnerability** instead of an issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+      placeholder: Opened a Torid riven from chat; the panel said "couldn't grade".
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where?
+      options:
+        - Riven overlay
+        - Relic rewards overlay
+        - Home
+        - Foundry
+        - Inventory
+        - Mastery Helper
+        - Rivens
+        - Ducanator
+        - Inventory capture (data missing or stale)
+        - Installing or updating
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Lotus version
+      description: Tools → App updates shows it.
+      placeholder: 0.1.1
+    validations:
+      required: true
+  - type: input
+    id: screen
+    attributes:
+      label: Screen
+      description: Resolution and Windows display scaling (Settings → System → Display).
+      placeholder: 2560×1440, 100%
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Warframe display mode
+      options:
+        - Borderless
+        - Windowed
+        - Fullscreen
+        - Not relevant
+  - type: textarea
+    id: log
+    attributes:
+      label: overlay.log and screenshots
+      description: |
+        Drag files here. For overlays, the `overlay.log` from a run with Debug logging on helps most.
+        Please check them first and remove anything you don't want to share.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Windows version, game language, steps to reproduce it every time, etc.
