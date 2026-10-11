@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-10-10
+
 ### Fixed
 - Pages now open at the top instead of at the previous page's scroll position.
 - Riven overlay: reads cards whose Slash label is hidden by its icon, both as a positive stat
@@ -51,6 +53,7 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/releases/tag/v0.1.0
