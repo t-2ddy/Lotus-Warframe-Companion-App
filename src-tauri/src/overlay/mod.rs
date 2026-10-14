@@ -1,16 +1,22 @@
 //! The riven overlay (Tools page, off by default). See `docs/plans/riven-overlay.md`.
 //!
-//! - **Chat-link rivens:** when the game logs a riven opening in the item-details dialog, read
-//!   the card off the screen and show a panel at the left of the game. It hides when the dialog
-//!   closes.
-//! - **Reroll screen:** the old riven's panel on the left, each new roll on the right. Cycles
-//!   and confirms come from the log; the cards are read off the screen.
+//! - **Chat-link rivens:** when the game logs a riven opening in the item-details dialog (its
+//!   `HudVis` going up, then `PopulateInfo` naming a riven within 2 s), read the card off the
+//!   screen and show a panel at the left of the game. It hides when the dialog closes.
+//! - **Reroll screen:** the log opens it (`Diorama setup`), then each cycle and confirm (their
+//!   dialogs) and its close; each one reads the cards off the screen once. The old riven's panel
+//!   is on the left, each new roll on the right.
 //! - **Relic rewards** (its own toggle; `docs/plans/relic-rewards.md`): the squad's relics come
-//!   from the log at mission start, and their rewards' prices are fetched in the background. On
-//!   the reward screen the cards are read off the screen, a panel goes under each, and the
-//!   shown items' prices are refreshed live.
+//!   from the log at mission start, and their rewards' prices are fetched in the background.
+//!   AlecaFrame's way (`docs/plans/overlay-pivot.md`): `Got rewards` triggers one copy of the
+//!   screen 650 ms later, a panel goes under each card, and the panels close 15 s after the
+//!   trigger or when the log closes the screen. Prices are refreshed live meanwhile.
+//! - **Focus:** at a trigger the game is brought to the front if another window has it (Tools
+//!   setting, on by default), a copy is only taken while the game is in front, and the panels
+//!   stay up through focus blips shorter than [`AWAY_GRACE`].
 //!
-//! Read-only throughout: EE.log, a copy of the screen, and our own click-through window on top.
+//! Read-only throughout: the game's log lines (`gamelog`), a copy of the screen, and our own
+//! click-through window on top. Focusing the game's window is an ordinary window-manager call.
 
 pub mod card;
 pub mod events;
@@ -42,17 +48,25 @@ use screen::{GameWindow, Region};
 pub const WINDOW: &str = "riven-overlay";
 const SETTING: &str = "riven_overlay";
 const RELIC_SETTING: &str = "relic_overlay";
+/// Tools → Bring Warframe to front for overlays (on unless switched off).
+const FOCUS_SETTING: &str = "focus_game";
 /// Tools → Debug logging: write `overlay.log` and the `overlay-debug/` images (off by default).
 const DEBUG_SETTING: &str = "debug_logging";
 /// Price freshness for relic rewards: fetched ahead within a day; on the reward screen, live.
 const PREFETCH_MAX_AGE_MS: i64 = 24 * 60 * 60 * 1000;
 const LIVE_MAX_AGE_MS: i64 = 10 * 60 * 1000;
-/// The reward screen lasts about 20 s; stop regardless after this.
-const REWARDS_CAP: Duration = Duration::from_secs(45);
-/// The reward screen always lasts its 5 s pause and 15 s choice (unless the log closes it
-/// sooner): the screen check can't end it before this. The names band reads empty for a moment
-/// while a card is being picked.
-const REWARDS_MIN: Duration = Duration::from_secs(21);
+/// Relic rewards: `Got rewards` (the cards are up) opens the panels and starts their timer. They
+/// close [`REWARDS_SHOWN`] later, the screen's choice countdown, whatever happened meanwhile
+/// (alt-tabbing doesn't move it). Until the cards are read they're read every [`REWARDS_READ_EVERY`]
+/// while the game is in front, from [`REWARDS_CAPTURE_DELAY`] after the trigger (AlecaFrame's delay:
+/// the cards are whole by then). After [`REWARDS_FULL_TRIES`] reads where not every card matched,
+/// the cards that did are shown.
+const REWARDS_SHOWN: Duration = Duration::from_secs(15);
+const REWARDS_CAPTURE_DELAY: Duration = Duration::from_millis(650);
+const REWARDS_READ_EVERY: Duration = Duration::from_millis(500);
+const REWARDS_FULL_TRIES: u32 = 3;
+/// The panels stay up while another window has been in front for less than this.
+const AWAY_GRACE: Duration = Duration::from_secs(1);
 /// A second mission name within this long is the same mission (cached name, then the host's).
 const SAME_MISSION: Duration = Duration::from_secs(120);
 /// A weapon load counts for the screen that opens within this long.
@@ -74,10 +88,6 @@ const REROLL_RIGHT: Region = Region { x: 0.622, y: 0.603, w: 0.135, h: 0.165 };
 /// The screen's title, top left: "INVENTORY/MODS" on the mod screen (riven list and reroll
 /// screen), "ITEM DETAILS" for a chat link.
 const SCREEN_HEADER: Region = Region { x: 0.03, y: 0.015, w: 0.30, h: 0.07 };
-/// The reroll screen's button under the cards: "CYCLE FOR 7,000" before a cycle, "CONFIRM" after
-/// (text at y 0.884, x 0.446–0.526 on the screenshots). Tells the reroll screen apart from other
-/// screens with a riven card in the middle.
-const REROLL_BUTTONS: Region = Region { x: 0.42, y: 0.865, w: 0.16, h: 0.05 };
 /// The chat-link screen's "Fits in" box (bottom right): the weapon, variant included, the card's
 /// numbers are for. Its name is at y 0.85–0.88; the area starts higher in case it wraps.
 const FITS_IN: Region = Region { x: 0.853, y: 0.80, w: 0.10, h: 0.09 };
@@ -87,9 +97,23 @@ const FITS_IN: Region = Region { x: 0.853, y: 0.80, w: 0.10, h: 0.09 };
 const SETTLE_READS: u32 = 8;
 /// Looks at the "Fits in" box this many times (250 ms apart) while it hasn't been read.
 const FITS_IN_TRIES: u32 = 8;
+/// A riven in the item-details dialog counts when its `PopulateInfo` line comes within this long
+/// of the dialog opening (AlecaFrame's rule); the card is then looked for for [`INSPECT_LOOK`],
+/// starting [`INSPECT_DELAY`] after the line.
+const INSPECT_OPENED: Duration = Duration::from_secs(2);
+const INSPECT_LOOK: Duration = Duration::from_secs(3);
+const INSPECT_DELAY: Duration = Duration::from_millis(200);
+/// Reroll screen timings after its log lines: the current card is read this long after the
+/// screen opens (AlecaFrame), the new roll this long after the cycle's Yes (`SendResult(4)`; the
+/// reroll animation takes about 3.5 s, and the card is read again only if that read isn't whole),
+/// and the kept card this long after a confirm.
+const REROLL_OPEN_DELAY: Duration = Duration::from_millis(200);
+const REROLL_CYCLE_DELAY: Duration = Duration::from_millis(3500);
+const REROLL_CONFIRM_DELAY: Duration = Duration::from_millis(1000);
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static RELICS_ENABLED: AtomicBool = AtomicBool::new(false);
+static FOCUS_GAME: AtomicBool = AtomicBool::new(true);
 /// Debug logging (Tools page): only then are `overlay.log` and `overlay-debug/` written.
 static DEBUG: AtomicBool = AtomicBool::new(false);
 /// `<app data>/overlay.log`: what the overlay saw and did (cleared at each start). Written only
@@ -140,6 +164,11 @@ pub fn on_log_line(line: &str) {
     if let Some(event) = events::parse(line) {
         send(Msg::Log(event));
     }
+}
+
+/// The game's lines started or stopped arriving live (`gamelog`); logged for debugging timing.
+pub fn on_log_source(live: bool) {
+    olog!("log source: {}", if live { "live (debug output)" } else { "EE.log file" });
 }
 
 /// New riven data is in use: log what changed and work the shown riven out again.
@@ -248,19 +277,25 @@ struct RewardsSession {
     preview: bool,
     /// The user's platinum and ducats.
     wallet: (Option<i64>, Option<i64>),
+    /// When `Got rewards` came (or the preview started): the timer counts from here.
     opened: Instant,
     /// The cards have been read.
     read: bool,
-    attempts: u32,
-    /// Looks in a row that found no reward cards (after they were read).
-    misses: u32,
-    next_check: Instant,
+    /// Reads so far that didn't match every card.
+    tries: u32,
     views: Vec<RewardView>,
 }
 
 impl RewardsSession {
     fn new(preview: bool) -> Self {
-        RewardsSession { preview, wallet: (None, None), opened: Instant::now(), read: false, attempts: 0, misses: 0, next_check: Instant::now(), views: Vec::new() }
+        RewardsSession {
+            preview,
+            wallet: (None, None),
+            opened: Instant::now(),
+            read: false,
+            tries: 0,
+            views: Vec::new(),
+        }
     }
 }
 
@@ -269,8 +304,8 @@ enum RerollStep {
     ReadingOld { attempts: u32 },
     ReadingNew { attempts: u32 },
     ReadingKept { attempts: u32 },
-    /// Watching that the cards are still on screen.
-    Watching { misses: u32 },
+    /// Waiting for the log's next reroll line.
+    Watching,
 }
 
 struct Controller {
@@ -290,15 +325,12 @@ struct Controller {
     /// Chat-link rivens: the lilac signature of the card last read, reads in a row with no card,
     /// and when to look next.
     watch_sig: Option<Vec<u8>>,
-    /// The reroll card area's last look: its lilac signature and when its button was read, so
-    /// the button is OCR'd again only when the card changes (or a second later).
-    reroll_look: Option<(Vec<u8>, Instant)>,
-    next_reroll_look: Instant,
-    /// Cycles and confirms seen on the reroll screen (its button) that the log hasn't caught up
-    /// with yet, so its late lines don't redo them.
-    screen_cycles: u32,
-    screen_confirms: u32,
     watch_misses: u32,
+    /// The item-details dialog's last `HudVis` level and when it last went up.
+    details_level: u32,
+    details_opened: Option<Instant>,
+    /// A chat-link riven was logged: look for its card on screen until then.
+    inspect_until: Option<Instant>,
     next_watch: Instant,
     /// Riven type from the latest `PopulateInfo` line (the log lags, so it may come after the card).
     log_type: Option<(String, Instant)>,
@@ -323,12 +355,10 @@ struct Controller {
     /// A real reward screen is up (its open line was logged). The relic picker between endless
     /// rounds logs a close line without an open one.
     reward_screen_up: bool,
-}
-
-/// The reroll screen's button before a cycle: "CYCLE FOR 7,000", or with too little Kuva
-/// "INSUFFICIENT KUVA (3,500 NEEDED)" (often read as "SUFFICIENT … NEEDE").
-fn before_cycle(button: &str) -> bool {
-    button.contains("CYCLE") || button.contains("SUFFICIENT") || button.contains("NEEDE")
+    /// The mission is a Requiem fissure (tag `VoidT5`): no relic reward panels.
+    requiem: bool,
+    /// When another window took the front from the game (for [`AWAY_GRACE`]).
+    away_since: Option<Instant>,
 }
 
 /// The screen title read as the mod screen's ("INVENTORY/MODS", read as "EINVENTORY/MODS").
@@ -358,6 +388,8 @@ pub fn start(app: &AppHandle, shared: Arc<Shared>) {
     };
     ENABLED.store(setting_on(SETTING), Ordering::Relaxed);
     RELICS_ENABLED.store(setting_on(RELIC_SETTING), Ordering::Relaxed);
+    let focus_off = shared.store.lock().unwrap().as_ref().and_then(|s| s.setting(FOCUS_SETTING).ok().flatten()).is_some_and(|v| v == "off");
+    FOCUS_GAME.store(!focus_off, Ordering::Relaxed);
     set_debug(setting_on(DEBUG_SETTING));
 
     let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("/overlay".into()))
@@ -399,11 +431,10 @@ pub fn start(app: &AppHandle, shared: Arc<Shared>) {
             shortcut_registered: false,
             last_text: std::collections::HashMap::new(),
             watch_sig: None,
-            reroll_look: None,
-            next_reroll_look: Instant::now(),
-            screen_cycles: 0,
-            screen_confirms: 0,
             watch_misses: 0,
+            details_level: 0,
+            details_opened: None,
+            inspect_until: None,
             next_watch: Instant::now(),
             log_type: None,
             fits_in: None,
@@ -418,6 +449,8 @@ pub fn start(app: &AppHandle, shared: Arc<Shared>) {
             logged_rewards: Vec::new(),
             mission_started: None,
             reward_screen_up: false,
+            requiem: false,
+            away_since: None,
         }
         .run(rx)
     });
@@ -481,14 +514,13 @@ impl Controller {
         if self.session.is_some() && Instant::now() >= self.next_action {
             self.step();
         }
-        // The reroll screen, from the screen: the log's line for it often comes seconds late.
-        let idle = ENABLED.load(Ordering::Relaxed) && matches!(self.session, None | Some(Session::Inspect { .. }));
-        if idle && Instant::now() >= self.next_reroll_look {
-            self.next_reroll_look = Instant::now() + Duration::from_millis(250);
-            self.watch_reroll();
+        // Chat-link cards: looked for after the log names one, and re-read while shown.
+        if self.inspect_until.is_some_and(|t| Instant::now() >= t) && !matches!(self.session, Some(Session::Inspect { .. })) {
+            olog!("chat riven: no card on screen");
+            self.inspect_until = None;
         }
         let watching = ENABLED.load(Ordering::Relaxed)
-            && matches!(self.session, None | Some(Session::Inspect { .. }));
+            && (matches!(self.session, Some(Session::Inspect { .. })) || (self.session.is_none() && self.inspect_until.is_some()));
         if watching && Instant::now() >= self.next_watch {
             self.watch_inspect();
             // Quicker while a riven is up or one was opened recently (browsing a riven list).
@@ -499,8 +531,8 @@ impl Controller {
         self.update_visibility();
     }
 
-    /// Chat-link rivens follow the screen, not the (lagging) log: copy the card area, and when
-    /// lilac riven text appears or changes, read it and show the panel; when it's gone, hide.
+    /// Chat-link rivens, once the log has named one: copy the card area, and when lilac riven text
+    /// appears or changes, read it and show the panel; when it's gone, hide.
     fn watch_inspect(&mut self) {
         let Some(game) = self.game() else { return };
         let front = screen::foreground();
@@ -565,34 +597,6 @@ impl Controller {
         }
     }
 
-    /// Starts the reroll session as soon as the reroll screen is up (a riven card where the
-    /// screen centres it, and its "CYCLE FOR" button), instead of waiting for the log.
-    fn watch_reroll(&mut self) {
-        let Some(game) = self.game() else { return };
-        let front = screen::foreground();
-        if front != game.hwnd && front != self.overlay_hwnd() {
-            return;
-        }
-        let (x, y, w, h) = REROLL_CENTRE.on(&game);
-        let Some(shot) = screen::grab(x, y, w, h) else { return };
-        let Some(sig) = screen::card_signature(&shot) else {
-            self.reroll_look = None;
-            return;
-        };
-        // The same card as last look: read its button again only after a second (it may have
-        // been fading in).
-        if self.reroll_look.as_ref().is_some_and(|(s, at)| screen::signatures_match(s, &sig) && at.elapsed() < Duration::from_secs(1)) {
-            return;
-        }
-        self.reroll_look = Some((sig, Instant::now()));
-        // Only before a cycle: after one ("CONFIRM") the log's cycle line says which card is old.
-        if !self.reroll_buttons().is_some_and(|t| before_cycle(&t)) {
-            return;
-        }
-        olog!("reroll screen seen");
-        self.start_reroll(Duration::ZERO);
-    }
-
     /// The mod screen's "INVENTORY/MODS" header is showing (read the same on every mod screen;
     /// the chat link's ITEM DETAILS header reads unreliably, so this is what's checked).
     fn mod_screen_header(&mut self) -> bool {
@@ -603,19 +607,9 @@ impl Controller {
         self.ocr_lines("header", &shot, &info).is_some_and(|lines| is_mod_header(&lines))
     }
 
-    /// The text on the reroll screen's button area, upper case ("CYCLE FOR 7,000", "CONFIRM"),
-    /// or empty if there's none; `None` if the game or the screen copy isn't there.
-    fn reroll_buttons(&mut self) -> Option<String> {
-        let game = self.game()?;
-        let (x, y, w, h) = REROLL_BUTTONS.on(&game);
-        let shot = screen::grab(x, y, w, h)?;
-        let info = format!("{w}x{h} at {x},{y}; game {}x{}", game.width, game.height);
-        self.ocr_lines("reroll-buttons", &shot, &info).map(|lines| lines.join(" ").to_uppercase())
-    }
-
     /// A reroll session reading the current riven `after` from now.
     fn start_reroll(&mut self, after: Duration) {
-        (self.screen_cycles, self.screen_confirms) = (0, 0);
+        self.inspect_until = None;
         self.session = Some(Session::Reroll {
             weapon: self.recent_weapon(),
             riven_type: None,
@@ -791,6 +785,25 @@ impl Controller {
         self.last_weapon.as_ref().filter(|(_, at)| at.elapsed() < WEAPON_WINDOW).map(|(p, _)| p.clone())
     }
 
+    /// The game (or our overlay, when clickable) is the foreground window.
+    fn game_in_front(&mut self) -> bool {
+        let Some(game) = self.game() else { return false };
+        let front = screen::foreground();
+        front == game.hwnd || front == self.overlay_hwnd()
+    }
+
+    /// Brings the game to the front for a trigger (`why`) when another window has it, if the
+    /// Tools setting is on. Logs what had the front.
+    fn focus_game(&mut self, why: &str) {
+        if !FOCUS_GAME.load(Ordering::Relaxed) || self.game_in_front() {
+            return;
+        }
+        let Some(game) = self.game() else { return };
+        let owner = screen::foreground_owner();
+        let ok = screen::bring_to_front(&game);
+        olog!("{why}: brought the game to the front from {owner} ({})", if ok { "done" } else { "Windows refused" });
+    }
+
     fn on_event(&mut self, event: ScreenEvent) {
         let enabled = ENABLED.load(Ordering::Relaxed);
         match event {
@@ -802,34 +815,45 @@ impl Controller {
                 }
             }
             ScreenEvent::RivenInspected { riven_type } if enabled => {
-                // The card is usually on screen already; the log names its type (and, just
-                // before, its weapon). Work it out again with them.
+                // The log names the riven's type (and, just before, its weapon). A riven opened
+                // in the item-details dialog (it opened just now, or one is shown: browsing a
+                // list) is looked for on screen.
                 self.log_type = Some((riven_type, Instant::now()));
-                self.reidentify_inspect();
-                self.next_watch = Instant::now();
+                let opened = self.details_opened.is_some_and(|t| t.elapsed() < INSPECT_OPENED);
+                let shown = matches!(self.session, Some(Session::Inspect { .. }));
+                if opened || shown {
+                    if !shown {
+                        olog!("chat riven opened");
+                        self.focus_game("chat riven");
+                    }
+                    self.inspect_until = Some(Instant::now() + INSPECT_LOOK);
+                    self.watch_sig = None;
+                    self.next_watch = Instant::now() + INSPECT_DELAY;
+                    self.reidentify_inspect();
+                }
             }
-            ScreenEvent::DetailsVisibility { .. } => {
-                // A dialog opened or closed (possibly seconds ago): look at the screen now.
-                self.watch_sig = None;
-                self.next_watch = Instant::now();
+            ScreenEvent::DetailsVisibility { level } => {
+                // Up: a dialog opened (a riven, if `PopulateInfo` names one). Down: one closed.
+                if level < self.details_level {
+                    if matches!(self.session, Some(Session::Inspect { .. })) {
+                        self.end("item details closed");
+                    }
+                    self.inspect_until = None;
+                    self.details_opened = None;
+                } else {
+                    self.details_opened = Some(Instant::now());
+                }
+                self.details_level = level;
             }
             ScreenEvent::RerollOpened if enabled => {
-                // Usually seen on screen already: keep that session, and if it had no weapon
-                // yet, read the current riven again with the logged one (its variant).
-                let logged = self.recent_weapon();
-                if let Some(Session::Reroll { weapon, new, step, .. }) = &mut self.session {
-                    olog!("reroll screen opened (log)");
-                    if weapon.is_none() && logged.is_some() {
-                        *weapon = logged;
-                        if new.is_none() {
-                            *step = RerollStep::ReadingOld { attempts: 0 };
-                            self.next_action = Instant::now();
-                        }
-                    }
-                    return;
-                }
                 olog!("reroll screen opened");
-                self.start_reroll(Duration::from_millis(600));
+                self.focus_game("reroll screen");
+                self.start_reroll(REROLL_OPEN_DELAY);
+            }
+            ScreenEvent::RerollClosed => {
+                if matches!(self.session, Some(Session::Reroll { .. })) {
+                    self.end("reroll screen closed");
+                }
             }
             ScreenEvent::ModScreenClosed => {
                 if matches!(self.session, Some(Session::Reroll { .. })) {
@@ -866,28 +890,27 @@ impl Controller {
                     }
                 }
             }
+            ScreenEvent::MissionTag { tag } => {
+                self.requiem = tag == "VoidT5";
+                if self.requiem {
+                    olog!("Requiem mission ({tag}): no relic reward panels");
+                }
+            }
             ScreenEvent::RewardScreenOpened => {
-                // The cards show ~5 s later (and the log can lag): start looking now.
                 self.collecting_relics = false;
                 self.reward_screen_up = true;
-                if !RELICS_ENABLED.load(Ordering::Relaxed) {
-                    return;
-                }
-                if !matches!(&self.session, Some(Session::Rewards(r)) if !r.preview) {
-                    olog!("reward screen opened (relics: {:?})", self.squad_relics);
-                    self.session = Some(Session::Rewards(RewardsSession::new(false)));
-                    self.after(Duration::from_millis(300));
-                    self.publish();
-                }
             }
             ScreenEvent::RewardsReady if RELICS_ENABLED.load(Ordering::Relaxed) => {
                 self.collecting_relics = false;
-                if !matches!(&self.session, Some(Session::Rewards(r)) if !r.preview) {
-                    self.session = Some(Session::Rewards(RewardsSession::new(false)));
+                if self.requiem {
+                    olog!("rewards ready, but a Requiem mission: skipped");
+                    return;
                 }
-                if matches!(&self.session, Some(Session::Rewards(r)) if !r.read) {
-                    self.after(Duration::ZERO);
-                }
+                olog!("rewards ready (relics: {:?})", self.squad_relics);
+                self.session = Some(Session::Rewards(RewardsSession::new(false)));
+                self.focus_game("reward cards");
+                self.after(REWARDS_CAPTURE_DELAY);
+                self.publish();
             }
             ScreenEvent::RewardLogged { path } => self.logged_rewards.push(path),
             ScreenEvent::RewardScreenClosed => {
@@ -907,13 +930,9 @@ impl Controller {
                 if let Some(name) = cycled_riven(&text) {
                     self.on_cycle(name.to_string(), enabled);
                 } else if is_confirm(&text) {
-                    if self.screen_confirms > 0 {
-                        self.screen_confirms -= 1; // already seen on screen
-                        return;
-                    }
                     if let Some(Session::Reroll { step, .. }) = &mut self.session {
                         *step = RerollStep::ReadingKept { attempts: 0 };
-                        self.next_action = Instant::now() + Duration::from_millis(900);
+                        self.next_action = Instant::now() + REROLL_CONFIRM_DELAY;
                     }
                 }
             }
@@ -934,8 +953,10 @@ impl Controller {
                 step: RerollStep::ReadingNew { attempts: 0 },
             });
         }
+        if enabled {
+            self.focus_game("riven cycle");
+        }
         let own = self.lookup_own_by_title(&title);
-        let seen = self.screen_cycles > 0;
         let Some(Session::Reroll { old, new, step, riven_type, .. }) = &mut self.session else { return };
         let stale = old.as_ref().is_none_or(|o| card::norm(&o.card.title) != card::norm(&title));
         if stale {
@@ -944,18 +965,9 @@ impl Controller {
                 *old = Some(found);
             }
         }
-        if seen {
-            // The screen showed this cycle already and the new roll is read or being read: only
-            // the old riven (named in the dialog) was checked.
-            self.screen_cycles -= 1;
-            if stale {
-                self.publish();
-            }
-            return;
-        }
         *new = None;
         *step = RerollStep::ReadingNew { attempts: 0 };
-        self.next_action = Instant::now() + Duration::from_millis(900);
+        self.next_action = Instant::now() + REROLL_CYCLE_DELAY;
         self.publish();
     }
 
@@ -966,6 +978,7 @@ impl Controller {
     fn end(&mut self, why: &str) {
         olog!("hidden ({why})");
         self.session = None;
+        self.inspect_until = None;
         self.watch_sig = None;
         self.watch_misses = 0;
         self.set_interactive(false);
@@ -1077,7 +1090,7 @@ impl Controller {
                         olog!("{}: {note}", card.title);
                     }
                     panel.rank_assumed = r.rank_assumed;
-                    panel.riven = Some(r.view);
+                    panel.riven = Some(r.max);
                     fitted_variant = variant;
                 }
                 Err(why) => errors = why,
@@ -1134,8 +1147,9 @@ impl Controller {
         let named = Card { title: title.to_string(), ..Card::empty() };
         let disposition = card::shown_disposition(data, &named, weapon.as_deref());
         let want = card::norm(title);
+        // At max rank, as the reroll screen shows it.
         let (r, view) = own.iter().find_map(|r| {
-            let v = rivens::view_with(data, &sheet, r, rivens::own_rank(r), disposition)?;
+            let v = rivens::view_with(data, &sheet, r, rivens::MAX_RANK, disposition)?;
             (card::norm(&format!("{} {}", v.weapon, v.name)) == want).then_some((r, v))
         })?;
         let kind = r.item_type.rsplit('/').next().unwrap_or_default().to_string();
@@ -1191,20 +1205,24 @@ impl Controller {
         mut new: Option<Found>,
         step: RerollStep,
     ) -> (Option<Session>, bool) {
-        let rank = old.as_ref().and_then(|o| o.panel.riven.as_ref()).map(|v| v.rank);
+        // The reroll screen shows every riven's numbers at max rank, whatever its rank (an
+        // unranked Xoris riven: +35.1% Attack Speed on screen, +3.9% at its rank 0). The panel
+        // still says the riven's own rank (rerolls keep it).
+        let shown_rank = Some(rivens::MAX_RANK);
+        let own_rank = old.as_ref().filter(|o| o.panel.own).and_then(|o| o.panel.riven.as_ref()).map(|v| v.rank);
         let (next, changed) = match step {
             RerollStep::ReadingOld { attempts } => match self.read(REROLL_CENTRE) {
                 Some(card) => {
                     let types = self.reroll_types(&card, riven_type.as_deref(), weapon.as_deref());
-                    let panel = self.identify(&card, &types, weapon.as_deref(), None, "left", "Current", false);
+                    let panel = self.identify(&card, &types, weapon.as_deref(), shown_rank, "left", "Current", false);
                     if let Some(v) = &panel.riven {
                         riven_type = Some(v.item_type.rsplit('/').next().unwrap_or_default().to_string());
                     }
                     olog!("reroll: current {} ({})", card.title, panel.status);
                     old = Some(Found { card, panel });
-                    (RerollStep::Watching { misses: 0 }, true)
+                    (RerollStep::Watching, true)
                 }
-                None if attempts >= 16 => (RerollStep::Watching { misses: 0 }, true),
+                None if attempts >= 16 => (RerollStep::Watching, true),
                 None => (RerollStep::ReadingOld { attempts: attempts + 1 }, false),
             },
             RerollStep::ReadingNew { attempts } => {
@@ -1218,22 +1236,28 @@ impl Controller {
                 match fresh {
                     Some(card) => {
                         let types = self.reroll_types(&card, riven_type.as_deref(), weapon.as_deref());
-                        let panel = self.identify(&card, &types, weapon.as_deref(), rank, "right", "New roll", false);
+                        let mut panel = self.identify(&card, &types, weapon.as_deref(), shown_rank, "right", "New roll", false);
+                        if let (Some(r), Some(v)) = (own_rank, panel.riven.as_mut()) {
+                            v.rank = r;
+                        }
                         // Read straight after the cycle, the card may still be fading in: take it
                         // once it's whole and works out (or after a few tries).
-                        let whole = card.mastery.is_some() && card.lost_numbers == 0 && panel.status == "ready";
+                        // A name that doesn't read as the weapon ("Bucslc, idaata") means it's still
+                        // fading in, numbers included.
+                        let named = card::weapon_path(&rivens::data(), &card, None).is_some();
+                        let whole = named && card.mastery.is_some() && card.lost_numbers == 0 && panel.status == "ready";
                         if !whole && attempts < 8 {
                             (RerollStep::ReadingNew { attempts: attempts + 1 }, false)
                         } else {
                             olog!("reroll: new {} ({})", card.title, panel.status);
                             new = Some(Found { card, panel });
-                            (RerollStep::Watching { misses: 0 }, true)
+                            (RerollStep::Watching, true)
                         }
                     }
                     None if attempts >= 20 => {
                         let panel = Panel::failed("right", "New roll", "Couldn't read the new roll");
                         new = Some(Found { card: Card::empty(), panel });
-                        (RerollStep::Watching { misses: 0 }, true)
+                        (RerollStep::Watching, true)
                     }
                     None => (RerollStep::ReadingNew { attempts: attempts + 1 }, false),
                 }
@@ -1246,50 +1270,20 @@ impl Controller {
                         kept.panel.role = "Current";
                         old = Some(kept);
                     }
-                    (RerollStep::Watching { misses: 0 }, true)
+                    (RerollStep::Watching, true)
                 }
                 None if attempts >= 12 => {
                     new = None;
-                    (RerollStep::Watching { misses: 0 }, true)
+                    (RerollStep::Watching, true)
                 }
                 None => (RerollStep::ReadingKept { attempts: attempts + 1 }, false),
             },
-            RerollStep::Watching { misses } => {
-                // The reroll screen's button, checked often (one small read), says what happened
-                // seconds before the log does: CYCLE FOR → CONFIRM, a cycle went through and the
-                // new roll is up; CONFIRM → CYCLE FOR, a roll was chosen.
-                let buttons = self.reroll_buttons();
-                let cycle = buttons.as_deref().is_some_and(before_cycle);
-                let confirm = buttons.as_deref().is_some_and(|t| t.contains("CONFIRM"));
-                if confirm && new.is_none() && old.is_some() {
-                    olog!("reroll: cycle seen on screen");
-                    self.screen_cycles += 1;
-                    self.after(Duration::ZERO);
-                    return (Some(Session::Reroll { weapon, riven_type, old, new, step: RerollStep::ReadingNew { attempts: 0 } }), false);
-                }
-                if cycle && new.is_some() {
-                    olog!("reroll: confirm seen on screen");
-                    self.screen_confirms += 1;
-                    self.after(Duration::ZERO);
-                    return (Some(Session::Reroll { weapon, riven_type, old, new, step: RerollStep::ReadingKept { attempts: 0 } }), false);
-                }
-                // Backing out to the riven list isn't logged: end when the button is gone. A
-                // cycle or confirm dialog may cover it, so not while the log says one is waiting
-                // (other dialogs the log mentions, like "QuickMatchPleaseWait", don't count).
-                let up = buttons.is_none() || cycle || confirm;
-                let dialog = self.last_dialog.as_deref().is_some_and(|t| cycled_riven(t).is_some() || is_confirm(t));
-                if up || dialog {
-                    (RerollStep::Watching { misses: 0 }, false)
-                } else if misses + 1 >= 3 {
-                    self.after(Duration::from_millis(300));
-                    return (None, true);
-                } else {
-                    (RerollStep::Watching { misses: misses + 1 }, false)
-                }
-            }
+            // Waiting on the log: a cycle, a confirm, or the screen closing (the trait-lock menu
+            // covers the card without leaving the screen, so the screen itself isn't watched).
+            RerollStep::Watching => (RerollStep::Watching, false),
         };
-        let wait = if matches!(next, RerollStep::Watching { .. }) { 200 } else { 250 };
-        self.after(Duration::from_millis(wait));
+        let wait = if matches!(next, RerollStep::Watching) { Duration::from_secs(1) } else { Duration::from_millis(250) };
+        self.after(wait);
         (Some(Session::Reroll { weapon, riven_type, old, new, step: next }), changed)
     }
 
@@ -1304,12 +1298,17 @@ impl Controller {
             let changed = before != r.views;
             return (Some(Session::Rewards(r)), changed);
         }
-        if r.opened.elapsed() > REWARDS_CAP {
-            olog!("hidden (reward screen time limit)");
+        if r.opened.elapsed() >= REWARDS_SHOWN {
+            olog!("hidden (reward timer over)");
             return (None, true);
         }
         if !r.read {
-            match self.read_rewards() {
+            // Read while the game is in front (another window over it would be read instead).
+            self.after(REWARDS_READ_EVERY);
+            if !self.game_in_front() {
+                return (Some(Session::Rewards(r)), false);
+            }
+            match self.read_rewards(r.tries >= REWARDS_FULL_TRIES) {
                 Some(cards) => {
                     let (index, current) = self.inventory();
                     let game = self.game().unwrap_or(GameWindow { hwnd: 0, x: 0, y: 0, width: 1920, height: 1080 });
@@ -1318,34 +1317,17 @@ impl Controller {
                     self.fill_prices(&mut r.views, LIVE_MAX_AGE_MS);
                     olog!("rewards: {}", r.views.iter().map(|v| v.name.as_str()).collect::<Vec<_>>().join(", "));
                     r.read = true;
-                    r.next_check = Instant::now() + Duration::from_millis(1500);
                     self.after(Duration::from_millis(800));
                     return (Some(Session::Rewards(r)), true);
                 }
                 None => {
-                    r.attempts += 1;
-                    self.after(Duration::from_millis(300));
+                    r.tries += 1;
                     return (Some(Session::Rewards(r)), false);
                 }
             }
         }
         let before = r.views.clone();
         self.fill_prices(&mut r.views, LIVE_MAX_AGE_MS);
-        if Instant::now() >= r.next_check && r.opened.elapsed() >= REWARDS_MIN {
-            // The log's close line ends the session. As a backup, once the screen's time is up,
-            // end when the names band has had no card text for three looks in a row. Any text in two or more columns counts
-            // as the screen still being up: card art can garble a name so it doesn't match.
-            r.next_check = Instant::now() + Duration::from_millis(1500);
-            if self.read_columns().is_some_and(|cols| cols.len() >= 2) {
-                r.misses = 0;
-            } else {
-                r.misses += 1;
-                if r.misses >= 3 {
-                    olog!("hidden (reward cards gone)");
-                    return (None, true);
-                }
-            }
-        }
         self.after(Duration::from_millis(800));
         let changed = before != r.views;
         (Some(Session::Rewards(r)), changed)
@@ -1382,9 +1364,9 @@ impl Controller {
         (narrow, wide)
     }
 
-    /// Reads the reward cards: each column's name matched to a candidate. `None` unless at least
-    /// two cards (the screen never shows one) all matched.
-    fn read_rewards(&mut self) -> Option<Vec<(f64, Candidate)>> {
+    /// Reads the reward cards: each column's name matched to a candidate. Needs at least two
+    /// cards (the screen never shows one), all matched; with `partial`, the ones that matched.
+    fn read_rewards(&mut self, partial: bool) -> Option<Vec<(f64, Candidate)>> {
         let cols = self.read_columns()?;
         if cols.len() < 2 {
             return None;
@@ -1393,10 +1375,13 @@ impl Controller {
         let (narrow, wide) = self.reward_candidates(&index);
         let mut out = Vec::new();
         for c in &cols {
-            let found = relics::snap(&c.text, &narrow).or_else(|| relics::snap(&c.text, &wide))?;
-            out.push((c.centre, found.clone()));
+            match relics::snap(&c.text, &narrow).or_else(|| relics::snap(&c.text, &wide)) {
+                Some(found) => out.push((c.centre, found.clone())),
+                None if partial => olog!("rewards: no match for {:?}", c.text),
+                None => return None,
+            }
         }
-        Some(out)
+        (!out.is_empty()).then_some(out)
     }
 
     /// OCRs the reward names band into card columns (logged when the text changes).
@@ -1500,7 +1485,7 @@ impl Controller {
         let data = &*data;
         let sheet = self.shared.riven_sheet.read().unwrap().clone();
         let own = rivens::owned_rivens(&self.shared).map(|(o, _)| o).unwrap_or_default();
-        let mut views: Vec<RivenView> = own.iter().filter_map(|r| rivens::view(data, &sheet, r, rivens::own_rank(r))).collect();
+        let mut views: Vec<RivenView> = own.iter().filter_map(|r| rivens::view(data, &sheet, r, rivens::MAX_RANK)).collect();
         views.sort_by_key(|v| match v.grade.as_deref() {
             Some("Great") => 0,
             Some("Good") => 1,
@@ -1561,7 +1546,15 @@ impl Controller {
         let target = if preview { self.game().or_else(|| main_monitor(&self.app)) } else { self.game() };
         let overlay_hwnd = self.overlay_hwnd();
         let front = screen::foreground();
-        let in_front = target.is_some_and(|g| g.hwnd == front) || front == overlay_hwnd || preview;
+        let front_now = target.is_some_and(|g| g.hwnd == front) || front == overlay_hwnd || preview;
+        // A blip (a notification, a launcher popping up) doesn't hide the panels: only another
+        // window in front for longer than AWAY_GRACE does.
+        if front_now {
+            self.away_since = None;
+        } else if self.away_since.is_none() {
+            self.away_since = Some(Instant::now());
+        }
+        let in_front = front_now || self.away_since.is_some_and(|t| t.elapsed() < AWAY_GRACE);
         let want = self.session.is_some() && target.is_some() && (in_front || self.interactive);
 
         if want {
@@ -1571,6 +1564,9 @@ impl Controller {
         }
         if want != self.shown {
             olog!("window {} (session: {}, game found: {}, in front: {in_front})", if want { "shown" } else { "hidden" }, self.session.is_some(), target.is_some());
+            if !in_front && self.session.is_some() {
+                olog!("  in front instead: {}", screen::foreground_owner());
+            }
             self.shown = want;
             if want {
                 let _ = window.show();
@@ -1665,7 +1661,10 @@ fn main_monitor(app: &AppHandle) -> Option<GameWindow> {
 pub struct ToolSettings {
     pub riven_overlay: bool,
     pub relic_overlay: bool,
+    pub focus_game: bool,
     pub debug_logging: bool,
+    /// The game's lines arrive live (debug output) rather than from the lagging EE.log file.
+    pub live_log: bool,
 }
 
 #[tauri::command]
@@ -1673,7 +1672,9 @@ pub fn get_tool_settings() -> ToolSettings {
     ToolSettings {
         riven_overlay: ENABLED.load(Ordering::Relaxed),
         relic_overlay: RELICS_ENABLED.load(Ordering::Relaxed),
+        focus_game: FOCUS_GAME.load(Ordering::Relaxed),
         debug_logging: DEBUG.load(Ordering::Relaxed),
+        live_log: crate::gamelog::state() == crate::gamelog::FeedState::Listening,
     }
 }
 
@@ -1718,6 +1719,16 @@ pub fn set_relic_overlay(enabled: bool, shared: State<'_, Arc<Shared>>) -> Resul
     }
     RELICS_ENABLED.store(enabled, Ordering::Relaxed);
     olog!("relic rewards overlay {}", if enabled { "on" } else { "off" });
+    Ok(get_tool_settings())
+}
+
+#[tauri::command]
+pub fn set_focus_game(enabled: bool, shared: State<'_, Arc<Shared>>) -> Result<ToolSettings, String> {
+    if let Some(store) = shared.store.lock().unwrap().as_ref() {
+        store.set_setting(FOCUS_SETTING, if enabled { "on" } else { "off" }).map_err(|e| e.to_string())?;
+    }
+    FOCUS_GAME.store(enabled, Ordering::Relaxed);
+    olog!("bring game to front {}", if enabled { "on" } else { "off" });
     Ok(get_tool_settings())
 }
 
@@ -1778,17 +1789,9 @@ mod screenshot_tests {
         card::consensus(&reads.into_iter().filter_map(|r| parse_card(&r.unwrap())).collect::<Vec<_>>())
     }
 
-    /// overlay.log 2026-10-10: with too little Kuva the button after a confirm said
-    /// "INSUFFICIENT KUVA", so the confirm wasn't seen and the new roll's panel stayed 17 s.
+    /// Only the reroll's own dialogs keep the overlay up while the card is covered.
     #[test]
-    fn reroll_buttons_before_a_cycle() {
-        for read in ["CYCLE FOR \u{e0cc}3,500", "CYCLE -3,500", "SUFFICIENT / (3,500 NEEDE", "SUFFICIENT NEEDE", "(3,500 NEEDE"] {
-            assert!(before_cycle(read), "{read}");
-        }
-        for read in ["CONFIRM", "", "QUICK SELECT FILTER EXIT"] {
-            assert!(!before_cycle(read), "{read}");
-        }
-        // Only the reroll's own dialogs keep the overlay up while the button is covered.
+    fn reroll_dialogs() {
         assert!(cycled_riven("Are you sure you want to cycle Furis Geli-fevatox for \u{e0cc}3,500?").is_some());
         assert!(is_confirm("Cycle Riven into current selection?"));
         let other = "/Lotus/Language/Menu/NavBar_QuickMatchPleaseWait";
@@ -1796,8 +1799,7 @@ mod screenshot_tests {
     }
 
     /// The overlay's screens told apart (2560x1440 screenshots): the mod screen's header on its
-    /// riven list and the reroll screen (no chat overlay there), not on chat links; the reroll
-    /// button only on the reroll screen.
+    /// riven list and the reroll screen (no chat overlay there), not on chat links.
     #[test]
     fn screens_are_told_apart() {
         let read = |img: &screen::Image, r: Region| {
@@ -1805,42 +1807,16 @@ mod screenshot_tests {
             let (x, y, w, h) = r.on(&game);
             ocr::read_lines(&screen::upscale2(&screen::crop(img, x, y, w, h))).unwrap()
         };
-        for (name, mod_screen, cycle) in [
-            ("modInventory1Rivens.png", true, false),
-            ("reroll (1).png", true, true),
-            ("reroll (2).png", true, false),
-            ("inspectRiven.png", false, false),
-            ("rivenTool/error1.png", false, false),
-            ("rivenTool/error2.png", false, false),
+        for (name, mod_screen) in [
+            ("modInventory1Rivens.png", true),
+            ("reroll (1).png", true),
+            ("reroll (2).png", true),
+            ("inspectRiven.png", false),
+            ("rivenTool/error1.png", false),
+            ("rivenTool/error2.png", false),
         ] {
             let Some(img) = shot(name) else { continue };
             assert_eq!(is_mod_header(&read(&img, SCREEN_HEADER)), mod_screen, "{name} header");
-            assert_eq!(read(&img, REROLL_BUTTONS).join(" ").to_uppercase().contains("CYCLE"), cycle, "{name} button");
-        }
-    }
-
-    /// The reroll screen is told apart by its button: "CYCLE FOR" before a cycle only.
-    #[test]
-    fn reroll_button_marks_the_reroll_screen() {
-        let button = |img: &screen::Image| {
-            let game = GameWindow { hwnd: 0, x: 0, y: 0, width: img.width as i32, height: img.height as i32 };
-            let (x, y, w, h) = REROLL_BUTTONS.on(&game);
-            ocr::read_lines(&screen::upscale2(&screen::crop(img, x, y, w, h))).unwrap().join(" ").to_uppercase()
-        };
-        let card_there = |img: &screen::Image| {
-            let game = GameWindow { hwnd: 0, x: 0, y: 0, width: img.width as i32, height: img.height as i32 };
-            let (x, y, w, h) = REROLL_CENTRE.on(&game);
-            screen::card_signature(&screen::crop(img, x, y, w, h)).is_some()
-        };
-        if let Some(img) = shot("reroll (1).png") {
-            assert!(card_there(&img));
-            assert!(button(&img).contains("CYCLE"), "{}", button(&img));
-        }
-        if let Some(img) = shot("reroll (2).png") {
-            assert!(!button(&img).contains("CYCLE") && button(&img).contains("CONFIRM"), "{}", button(&img));
-        }
-        if let Some(img) = shot("inspectRiven.png") {
-            assert!(!button(&img).contains("CYCLE"), "{}", button(&img));
         }
     }
 

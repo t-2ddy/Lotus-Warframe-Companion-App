@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { openWelcome } from "$lib/welcomeState.svelte";
+  import { openWhatsNew } from "$lib/whatsNewState.svelte";
   import { appUpdate, checkForUpdate, installUpdate } from "$lib/appUpdate.svelte";
   import { onMount } from "svelte";
   import RivenDataStatus from "$lib/RivenDataStatus.svelte";
@@ -13,7 +14,14 @@
     { kind: "weekly", label: "Hide weekly checklist" },
   ];
 
-  type Settings = { rivenOverlay: boolean; relicOverlay: boolean; debugLogging: boolean };
+  type Settings = {
+    rivenOverlay: boolean;
+    relicOverlay: boolean;
+    focusGame: boolean;
+    debugLogging: boolean;
+    /** The game's lines arrive live (its debug output), not from the lagging EE.log file. */
+    liveLog: boolean;
+  };
 
   let settings = $state<Settings | null>(null);
   let error = $state<string | null>(null);
@@ -21,6 +29,7 @@
   let previewingRelics = $state(false);
   let relicError = $state<string | null>(null);
   let debugError = $state<string | null>(null);
+  let focusError = $state<string | null>(null);
   /** Where overlay.log and overlay-debug/ go. */
   let debugFolder = $state<string | null>(null);
 
@@ -64,6 +73,15 @@
     }
   }
 
+  async function setFocusGame(enabled: boolean) {
+    try {
+      settings = await invoke<Settings>("set_focus_game", { enabled });
+      focusError = null;
+    } catch (e) {
+      focusError = String(e);
+    }
+  }
+
   async function previewRelics() {
     previewingRelics = true;
     await invoke("preview_relic_overlay").catch((e) => (relicError = String(e)));
@@ -81,7 +99,8 @@
   <h1>Tools</h1>
   <p class="muted">
     In-game helpers. Each one is off unless you switch it on. New here?
-    <button class="link" onclick={openWelcome}>Show the welcome screen</button>
+    <button class="link" onclick={openWelcome}>Show the welcome screen</button> ·
+    <button class="link" onclick={openWhatsNew}>What's new</button>
   </p>
 
   <section class="tool">
@@ -106,7 +125,7 @@
     <ul class="notes">
       <li>Warframe must run in <b>Borderless</b> or <b>Windowed</b> mode (Options → Display). Exclusive fullscreen draws over every overlay.</li>
       <li>The panel is click-through. Press <b>Ctrl+Tab</b> while it shows to click listings, and again (or Done) to go back to the game.</li>
-      <li>It reads the game's log and the riven card on screen (Windows' built-in text recognition). Nothing is sent to the game. Your own rivens show exact rolls; other players' rolls are worked out from the card's numbers.</li>
+      <li>It reads the game's log lines as they're written and the riven card on screen (Windows' built-in text recognition). Nothing is sent to the game. Your own rivens show exact rolls; other players' rolls are worked out from the card's numbers.</li>
       <li>English game text only for now.</li>
       <li>The weapon variant the numbers are for (Latron or Latron Prime) is read from the <b>Fits in</b> box at the bottom right. If that can't be read, the panel shows the base weapon's numbers with a note and updates when the game's log names the variant. A card whose numbers don't fit shows <b>Fetching riven data…</b> for up to 3 seconds first.</li>
       <li>Stat values and dispositions come from Warframe Public Export Plus. The app checks for new data daily and after a riven that doesn't fit.</li>
@@ -148,6 +167,36 @@
       <span class="muted small">Shows four rewards from one relic for 12 seconds, laid out like the reward screen.</span>
     </div>
     {#if relicError}<p class="error">{relicError}</p>{/if}
+  </section>
+
+  <section class="tool">
+    <div class="head">
+      <h2>Bring Warframe to front for overlays</h2>
+      <label class="switch" title={settings?.focusGame ? "Turn off" : "Turn on"}>
+        <input
+          type="checkbox"
+          checked={settings?.focusGame ?? true}
+          disabled={!settings}
+          onchange={(e) => setFocusGame(e.currentTarget.checked)}
+        />
+        <span class="track"><span class="knob"></span></span>
+      </label>
+    </div>
+    <p>
+      The overlays read the cards off the screen, so the game has to be in front at that moment. When a reward screen,
+      a reroll or a chat riven opens while another window is in front, Warframe is brought to the front first.
+    </p>
+    <ul class="notes">
+      <li>Only at those moments, and only with one of the overlays switched on.</li>
+      <li>With this off, the overlays wait up to 10 seconds for you to switch back to the game before giving up.</li>
+      <li>The panels stay up through a short focus blip (under a second), such as a notification popping up.</li>
+      <li>
+        Game log: {settings === null ? "…" : settings.liveLog ? "live" : "from EE.log (can be seconds late)"}. Lotus
+        reads the game's lines as they're written. Only one app can do that at a time: with AlecaFrame or DebugView
+        open, Lotus reads EE.log instead and the overlays may come late.
+      </li>
+    </ul>
+    {#if focusError}<p class="error">{focusError}</p>{/if}
   </section>
 
   <section class="tool">

@@ -11,6 +11,8 @@
   import MaskIcon from "$lib/icons/MaskIcon.svelte";
   import Welcome from "$lib/Welcome.svelte";
   import { welcome } from "$lib/welcomeState.svelte";
+  import WhatsNew from "$lib/WhatsNew.svelte";
+  import { startWhatsNew, whatsNew } from "$lib/whatsNewState.svelte";
   import { appUpdate, installUpdate, startUpdateChecks } from "$lib/appUpdate.svelte";
   import Ducat from "$lib/icons/Ducat.svelte";
   import Riven from "$lib/icons/Riven.svelte";
@@ -46,6 +48,7 @@
   onMount(() => {
     if (page.url.pathname.startsWith("/overlay")) return;
     startStatus();
+    void startWhatsNew(welcome.open);
     const stopUpdates = startUpdateChecks();
     const win = getCurrentWindow();
     const sync = () => win.isMaximized().then((m) => (maximized = m)).catch(() => {});
@@ -196,7 +199,7 @@
     <main class="content" bind:this={contentEl}>
       {@render children()}
     </main>
-    {#if welcome.open}<Welcome />{/if}
+    {#if welcome.open}<Welcome />{:else if whatsNew.open}<WhatsNew />{/if}
   </div>
 </div>
 {/if}

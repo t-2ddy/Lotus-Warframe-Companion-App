@@ -253,7 +253,7 @@
             {/each}
           </ul>
           <div class="meta">
-            {Math.round(r.perfectness)}% perfect · rank {r.rank}{p.rankAssumed ? " (estimated)" : ""} · disposition {r.disposition.toFixed(2)}
+            {Math.round(r.perfectness)}% perfect · stats at max rank (riven is rank {r.rank}{p.rankAssumed ? ", estimated" : ""}) · disposition {r.disposition.toFixed(2)}
             {#if p.own}· <b>yours</b>{/if}
           </div>
           {#if p.note}<p class="note assumed">{p.note}</p>{/if}

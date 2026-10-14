@@ -31,6 +31,8 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Memory",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
+    # Live game log: Warframe's debug output (named shared memory and events).
+    "Win32_Security",
     # Riven overlay: find the game window, copy the screen, Windows' built-in OCR.
     "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",

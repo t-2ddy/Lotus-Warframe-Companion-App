@@ -80,9 +80,13 @@ fn stat_line(line: &str) -> Option<(f64, Unit, String)> {
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
-        // A sign stands on its own: the hyphen in a weapon's name ("AX-52 Toxi-vexidex") isn't one.
-        let after_word = i > 0 && chars[i - 1].is_alphanumeric();
-        let sign_ok = (matches!(c, '+' | '-' | '−' | '–') && !after_word)
+        // A minus right after a letter is a hyphen ("AX-52 Toxi-vexidex"), unless the letter is
+        // the lock icon read as a lone "O" ("O-35.6% Zoom"); after a digit it's the lock icon
+        // read as "0" ("0-35.6% Zoom"). A plus is always a sign ("0+126.4%").
+        let lone_lock = i > 0 && matches!(chars[i - 1], 'O' | 'o') && (i == 1 || chars[i - 2] == ' ');
+        let after_word = i > 0 && chars[i - 1].is_alphabetic() && !lone_lock;
+        let sign_ok = c == '+'
+            || (matches!(c, '-' | '−' | '–') && !after_word)
             || (matches!(c, 'x' | 'X') && (i == 0 || !chars[i - 1].is_alphabetic()));
         if sign_ok {
             let mut j = i + 1;
@@ -173,8 +177,12 @@ fn vote<T: PartialEq + Clone>(items: impl IntoIterator<Item = T>) -> Option<T> {
 /// right far more often than any one read. `None` if no read was a card.
 pub fn consensus(reads: &[Card]) -> Option<Card> {
     let title_key = vote(reads.iter().map(|c| norm(&c.title)))?;
-    let count = vote(reads.iter().filter(|c| norm(&c.title) == title_key).map(|c| c.stats.len()))?;
-    let agreeing: Vec<&Card> = reads.iter().filter(|c| norm(&c.title) == title_key && c.stats.len() == count).collect();
+    // Reads of the agreed title count; when no two reads agree on it (a card fading in garbles
+    // the name differently each time), every read does, or the first read would win alone.
+    let title_agreed = reads.len() == 1 || reads.iter().filter(|c| norm(&c.title) == title_key).count() > 1;
+    let counts = |c: &Card| !title_agreed || norm(&c.title) == title_key;
+    let count = vote(reads.iter().filter(|c| counts(c)).map(|c| c.stats.len()))?;
+    let agreeing: Vec<&Card> = reads.iter().filter(|c| counts(c) && c.stats.len() == count).collect();
     let stats: Vec<CardStat> = (0..count)
         .map(|i| {
             // Number and unit together, to a tenth (the precision cards show). A number some
@@ -189,9 +197,15 @@ pub fn consensus(reads: &[Card]) -> Option<Card> {
             CardStat { value, unit, label }
         })
         .collect();
-    // The title and stat lines as shown: from the first read with the most agreed numbers.
+    // The title and stat lines as shown: from the first read with the most agreed numbers, and
+    // between those, one whose riven name is whole (hyphenated: "Cell-ampicron", not "npicron").
     let matching = |c: &Card| c.stats.iter().zip(&stats).filter(|(a, b)| (a.value - b.value).abs() < 0.005).count();
-    let best = agreeing.iter().copied().reduce(|best, c| if matching(c) > matching(best) { c } else { best })?;
+    let whole_name = |c: &Card| {
+        let last = c.title.rsplit(' ').next().unwrap_or_default();
+        c.title.contains(' ') && last.contains('-') && last.chars().all(|ch| ch.is_alphabetic() || ch == '-')
+    };
+    let rank = |c: &Card| (matching(c), whole_name(c));
+    let best = agreeing.iter().copied().reduce(|best, c| if rank(c) > rank(best) { c } else { best })?;
     // As `parse_card` counts them, after the vote: a number one copy read isn't lost.
     let lost_numbers = stats.iter().filter(|s| s.value.is_nan() || s.value.abs() >= MAX_STAT).count();
     Some(Card {
@@ -530,7 +544,11 @@ pub fn name_tags(kind: &RivenType, riven_name: &str) -> Vec<String> {
 /// A riven worked out from a card: either the user's own (exact) or rebuilt from the numbers.
 #[derive(Debug, Clone)]
 pub struct Identified {
+    /// As the card shows it: the numbers at the riven's rank (the tests check these).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub view: RivenView,
+    /// The same rolls with the numbers at max rank (what the overlay shows).
+    pub max: RivenView,
     /// The rank wasn't known, so it was worked out from the numbers.
     pub rank_assumed: bool,
     /// Misread numbers that were repaired or left as "not read", for overlay.log.
@@ -646,11 +664,13 @@ pub fn find_own(
 ) -> Option<RivenView> {
     let want = norm(&card.title);
     let disposition = shown_disposition(data, card, logged_weapon);
-    owned
+    // Matched at the riven's own rank (the card's numbers), shown at max rank.
+    let (r, _) = owned
         .iter()
-        .filter_map(|r| rivens::view_with(data, sheet, r, rivens::own_rank(r), disposition))
-        .filter(|v| norm(&format!("{} {}", v.weapon, v.name)) == want)
-        .min_by(|a, b| stat_distance(a, card).total_cmp(&stat_distance(b, card)))
+        .filter_map(|r| rivens::view_with(data, sheet, r, rivens::own_rank(r), disposition).map(|v| (r, v)))
+        .filter(|(_, v)| norm(&format!("{} {}", v.weapon, v.name)) == want)
+        .min_by(|(_, a), (_, b)| stat_distance(a, card).total_cmp(&stat_distance(b, card)))?;
+    rivens::view_with(data, sheet, r, rivens::MAX_RANK, disposition)
 }
 
 /// How far a riven's shown numbers are from the card's (sum of differences).
@@ -988,6 +1008,12 @@ fn rebuild_tagged(
         }
     }
     let (rank, rank_assumed) = match rank {
+        // A known rank (rerolls keep it) must fit too: otherwise the rolls would be clamped to
+        // their range and shown as numbers the card doesn't have.
+        Some(r) if rank_for(&lines).is_none() => {
+            let at_r: Vec<f64> = rolls(&lines, r).into_iter().map(|(x, _)| x).collect();
+            return Err(format!("numbers don't fit rank {r} (rolls: {at_r:?})"));
+        }
         Some(r) => (r, false),
         None => {
             let at_8: Vec<f64> = rolls(&lines, 8).into_iter().map(|(x, _)| x).collect();
@@ -1019,40 +1045,44 @@ fn rebuild_tagged(
         item_type: format!("/Lotus/Upgrades/Mods/Randomized/{riven_type}"),
         fingerprint: fp.to_string(),
     };
-    let mut view = rivens::view_with(data, sheet, &owned, rank, Some(disposition)).ok_or("couldn't build the riven")?;
-    view.name = card.riven_name().to_string(); // the game's name, as shown
-    if !pending.is_empty() || !unread.is_empty() {
-        // An unread stat's range at this rank, from its worst to its best roll.
-        let unread: Vec<(Option<usize>, rivens::StatView)> = unread
-            .iter()
-            .map(|u| {
-                let base = if u.is_buff { u.info.value } else { rivens::curse_base(&u.info) };
-                let at = |x: f64| rivens::stat_text(&u.tag, &u.info.label, full(base, u.is_buff, rank) * (0.9 + 0.2 * x));
-                let (worst, best) = if u.is_buff { (at(0.0), at(1.0)) } else { (at(1.0), at(0.0)) };
-                let view = rivens::StatView {
-                    tag: u.tag.clone(),
-                    text: rivens::label_name(&u.info.label),
-                    good: u.is_buff,
-                    quality: 0.0,
-                    letter: "?".into(),
-                    worst,
-                    best,
-                    wanted: None,
-                    pending: true,
-                    legacy: false,
-                    unread: true,
-                };
-                (u.at, view)
-            })
-            .collect();
-        add_pending(data, kind, &mut view, card, &pending, unread, &buff_at);
-        // Graded again with these back in place (the sheet judges a negative Zoom or a missed
-        // Toxin by its tag); spliced traits still leave it ungraded.
-        if !view.grade_pending {
-            rivens::apply_grade(&mut view, sheet);
+    // The riven with its numbers at rank `show`: the card's rank, and max rank for the overlay.
+    let build = |show: u32| -> Result<RivenView, String> {
+        let mut view = rivens::view_with(data, sheet, &owned, show, Some(disposition)).ok_or("couldn't build the riven")?;
+        view.name = card.riven_name().to_string(); // the game's name, as shown
+        if !pending.is_empty() || !unread.is_empty() {
+            // An unread stat's range at this rank, from its worst to its best roll.
+            let unread: Vec<(Option<usize>, rivens::StatView)> = unread
+                .iter()
+                .map(|u| {
+                    let base = if u.is_buff { u.info.value } else { rivens::curse_base(&u.info) };
+                    let at = |x: f64| rivens::stat_text(&u.tag, &u.info.label, full(base, u.is_buff, show) * (0.9 + 0.2 * x));
+                    let (worst, best) = if u.is_buff { (at(0.0), at(1.0)) } else { (at(1.0), at(0.0)) };
+                    let view = rivens::StatView {
+                        tag: u.tag.clone(),
+                        text: rivens::label_name(&u.info.label),
+                        good: u.is_buff,
+                        quality: 0.0,
+                        letter: "?".into(),
+                        worst,
+                        best,
+                        wanted: None,
+                        pending: true,
+                        legacy: false,
+                        unread: true,
+                    };
+                    (u.at, view)
+                })
+                .collect();
+            add_pending(data, kind, &mut view, card, &pending, unread, &buff_at);
+            // Graded again with these back in place (the sheet judges a negative Zoom or a missed
+            // Toxin by its tag); spliced traits still leave it ungraded.
+            if !view.grade_pending {
+                rivens::apply_grade(&mut view, sheet);
+            }
         }
-    }
-    Ok(Identified { view, rank_assumed, notes })
+        Ok(view)
+    };
+    Ok(Identified { view: build(rank)?, max: build(rivens::MAX_RANK)?, rank_assumed, notes })
 }
 
 /// A card stat worked out from its number: `raw` as the riven data counts it (0.995 for
@@ -1878,3 +1908,115 @@ mod ocr_slip_tests {
         assert!(repairs(-52.1).iter().all(|v| *v < 0.0));
     }
 }
+
+#[cfg(test)]
+mod reroll_rank {
+    use super::*;
+
+    /// overlay.log 2026-10-14: a new roll read while fading in ("-36 4% Zoom" and worse), at the
+    /// rerolled riven's known rank 8. It came out at disposition 1.45 with clamped rolls (+266.5%
+    /// Damage, -47.4% Zoom); the card says +258.8% and -36.4% at Burston Prime's 1.35.
+    #[test]
+    fn a_known_rank_never_clamps_numbers_that_dont_fit() {
+        let reads = [
+            "Bucslc\u{201e} u, idaata / +264.3% Critical Chance / +258.8% Damage / -36 4% Zoom / 0101 / MR 15",
+            "uta / +264.3% Critical Chance / +258 8% Damage / -36 Zoom / MR 15 / 0 101",
+            "-00 / Burston untaata / +264.3% Critical Chance / +258.8% Damage / -3610/0 Zoom / MR 15 / 0101",
+            "Burslc,i u' ilaata / +264.3% Critical Chance / +258.8% Damage / -3610/0 Zoom / MR 15 / 0101",
+        ];
+        let cards: Vec<Card> =
+            reads.iter().filter_map(|r| parse_card(&r.split(" / ").map(String::from).collect::<Vec<_>>())).collect();
+        let card = consensus(&cards).unwrap();
+        let data = crate::rivens::bundled();
+        let sheet = GradeSheet::default();
+        let weapon = Some("/Lotus/Weapons/Tenno/LongGuns/PrimeBurston/PrimeBurston");
+        let (r, _) = work_out(&data, &sheet, &card, &["LotusRifleRandomModRare".to_string()], weapon, Some(8), |_| false).unwrap();
+        let shown: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+        // Zoom was read -364, -36, -361 and -361 (the card says -36.4): the vote's -361 is
+        // repaired to -36.1, which fits too. What matters is nothing stretched to fit.
+        assert_eq!(shown[..2], ["+264.3% Critical Chance", "+258.8% Damage"]);
+        assert!(matches!(shown[2], "-36.4% Zoom" | "-36.1% Zoom"), "{}", shown[2]);
+        assert_eq!((r.view.disposition, r.view.rank), (1.35, 8));
+    }
+
+    /// overlay.log 2026-10-14: the reroll screen shows an unranked riven at max rank. The new
+    /// roll of a rank-0 Xoris riven ("6Heat": the element icon read as a 6) failed when worked
+    /// out at its rank 0, and fits at rank 8.
+    #[test]
+    fn the_reroll_screen_shows_max_rank() {
+        let reads = [
+            "Xoris Ignius / +62.8% 6Heat / +50.9% Heavy Attack / Efficiency / MR8 / 01",
+            "Xoris Ignius / +62.8% / +50.9% Heavy Attack / Efficiency / MR8 / 01",
+            "Xoris Ignius / +62.8% 6 Heat / +50.9% Heavy Attack / Efficiency / 01",
+            "Xoris Ignius / +62.8% 6Heat / +50.9% Heavy Attack / Efficiency / MR8 / 01",
+        ];
+        let cards: Vec<Card> =
+            reads.iter().filter_map(|r| parse_card(&r.split(" / ").map(String::from).collect::<Vec<_>>())).collect();
+        let card = consensus(&cards).unwrap();
+        let data = crate::rivens::bundled();
+        let sheet = GradeSheet::default();
+        let weapon = Some("/Lotus/Weapons/Corpus/Melee/Glaive/CrpGhostCatcherGlaive/CrpGhostCatcherGlaive");
+        let types = ["PlayerMeleeWeaponRandomModRare".to_string()];
+        assert!(work_out(&data, &sheet, &card, &types, weapon, Some(0), |_| false).is_err());
+        let (r, _) = work_out(&data, &sheet, &card, &types, weapon, Some(crate::rivens::MAX_RANK), |_| false).unwrap();
+        let shown: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(shown, ["+62.8% Heat", "+50.9% Heavy Attack Efficiency"]);
+    }
+
+    /// overlay.log 2026-10-14: the locked trait's lock icon read as a "0" against the plus
+    /// ("0+126.4% Critical" / "Chance"). The line was dropped, its "Chance" joined Electricity's
+    /// label, and Critical Chance came back from the name without a number.
+    #[test]
+    fn a_lock_icon_read_as_zero_keeps_the_stat() {
+        let reads = [
+            "Ax-52 Crita- / vexidra / +72.3% Electricity / 0+126.4% Critical / Chance / +43.1% Fire Rate (x2 for / Bows) / -35.6% Zoom / MR 12 / 072",
+            "-vexidra / Ax-52 / +7230 ' / Aectricity / 0+126.4% Critical / Chance / +43.1% Fire Rate (x2 for / Bows) / -35.6% Zoom / MR 12 / 072",
+            "Ax-52 Crita-vexidra / +72.3% f Electricity / 0+126.4% Critical / Chance / +43.1% Fire Rate (x2 for / Bows) / -35.6% Zoom / MR 12 / 072",
+            "Ax-52 Crita-vexidra / +72.3% 4 Electricity / 0+126.4% Critical / Chance / +43.10/0 Fire Rate (x2 for / Bows) / -35.6% Zoom / MR 12 / 072",
+        ];
+        let cards: Vec<Card> =
+            reads.iter().filter_map(|r| parse_card(&r.split(" / ").map(String::from).collect::<Vec<_>>())).collect();
+        let card = consensus(&cards).unwrap();
+        let data = crate::rivens::bundled();
+        let weapon = Some("/Lotus/Weapons/Lasria/AK47/TC2024AK47Weapon");
+        let types = ["LotusRifleRandomModRare".to_string()];
+        let (r, _) = work_out(&data, &GradeSheet::default(), &card, &types, weapon, Some(crate::rivens::MAX_RANK), |_| false).unwrap();
+        let shown: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(shown, ["+72.3% Electricity", "+126.4% Critical Chance", "+43.1% Fire Rate (x2 for Bows)", "-35.6% Zoom"]);
+        assert!(r.view.stats.iter().all(|s| !s.pending));
+    }
+
+    /// overlay.log 2026-10-14: a locked negative read as "0-35.6% Zoom" (lock icon as "0") was
+    /// dropped, and with four different names read, the first read (the one without Zoom) won
+    /// alone. The three positives then "fit" only at a shifted disposition, every number off.
+    #[test]
+    fn a_locked_negative_and_a_garbled_name_still_read() {
+        let reads = [
+            "Ax-52 Ceinmpicron / +37.6% Ammo Maximum / +68.2% *Cold / +1 12.9% Critical Chance / 0-35.6% Zoom / MR 12 / 077",
+            "npicron / Ax-52 / +37.6% Ammo Maximum / +68.2% *Cold / +1 12.9% Critical Chance / O -35.6% Zoom / MR 12 / 077",
+            "Ax-52 / +37.6% Ammo Maximum / +68.2% *Cold / +1 12.9% Critical Chance / O -35.6% Zoom / MR 12 / 077",
+            "Ax-52 Cell-ampicron / +37.6% Ammo Maximum / +68.2% *Cold / +112.9% Critical Chance / O -35.6% Zoom / MR 12 / 077",
+        ];
+        let cards: Vec<Card> =
+            reads.iter().filter_map(|r| parse_card(&r.split(" / ").map(String::from).collect::<Vec<_>>())).collect();
+        assert_eq!(cards[0].stats.last().map(|s| s.value), Some(-35.6), "0-35.6% Zoom");
+        let card = consensus(&cards).unwrap();
+        assert_eq!(card.title, "Ax-52 Cell-ampicron");
+        let data = crate::rivens::bundled();
+        let weapon = Some("/Lotus/Weapons/Lasria/AK47/TC2024AK47Weapon");
+        let types = ["LotusRifleRandomModRare".to_string()];
+        let (r, _) = work_out(&data, &GradeSheet::default(), &card, &types, weapon, Some(crate::rivens::MAX_RANK), |_| false).unwrap();
+        let shown: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(shown, ["+37.6% Ammo Maximum", "+68.2% Cold", "+112.9% Critical Chance", "-35.6% Zoom"]);
+        assert!(r.notes.is_empty(), "{:?}", r.notes);
+    }
+
+    /// The lock icon read as a lone "O" against the minus; a weapon's hyphen still isn't a sign.
+    #[test]
+    fn lock_icon_letters_and_weapon_hyphens() {
+        assert_eq!(stat_line("O-35.6% Zoom").map(|s| s.0), Some(-35.6));
+        assert_eq!(stat_line("AX-52 Toxi-vexidex"), None);
+    }
+}
+
+

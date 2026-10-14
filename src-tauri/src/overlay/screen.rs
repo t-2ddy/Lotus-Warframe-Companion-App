@@ -9,9 +9,13 @@ use windows::Win32::Graphics::Gdi::{
     BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
 };
+use windows::Win32::System::Threading::{
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClientRect, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-    SetForegroundWindow,
+    BringWindowToTop, EnumWindows, GetClientRect, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+    IsWindowVisible, SetForegroundWindow,
 };
 
 /// The game window's client area in screen pixels.
@@ -64,6 +68,55 @@ pub fn find_game_window(pid: u32) -> Option<GameWindow> {
 pub fn focus(window: &GameWindow) {
     if window.hwnd != 0 {
         let _ = unsafe { SetForegroundWindow(HWND(window.hwnd as *mut _)) };
+    }
+}
+
+/// Brings the game to the front when another window has focus. Windows refuses focus changes
+/// from background apps, so this briefly shares input with the window in front (the usual way
+/// round it). True if the game is in front afterwards.
+pub fn bring_to_front(window: &GameWindow) -> bool {
+    let hwnd = HWND(window.hwnd as *mut _);
+    unsafe {
+        let front = GetForegroundWindow();
+        if front == hwnd {
+            return true;
+        }
+        let front_thread = GetWindowThreadProcessId(front, None);
+        let ours = GetCurrentThreadId();
+        let attached = front_thread != 0 && front_thread != ours && AttachThreadInput(ours, front_thread, true).as_bool();
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        if attached {
+            let _ = AttachThreadInput(ours, front_thread, false);
+        }
+        GetForegroundWindow() == hwnd
+    }
+}
+
+/// The foreground window's program and title, e.g. `Discord.exe "#general - Discord"` (for
+/// logging what took focus from the game).
+pub fn foreground_owner() -> String {
+    unsafe {
+        let front = GetForegroundWindow();
+        if front.0.is_null() {
+            return "(none)".into();
+        }
+        let mut title = [0u16; 256];
+        let n = GetWindowTextW(front, &mut title).max(0) as usize;
+        let title = String::from_utf16_lossy(&title[..n]);
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(front, Some(&mut pid));
+        let mut exe = String::from("?");
+        if let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            let mut buf = [0u16; 260];
+            let mut len = buf.len() as u32;
+            if QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut len).is_ok() {
+                let path = String::from_utf16_lossy(&buf[..len as usize]);
+                exe = path.rsplit('\\').next().unwrap_or(&path).to_string();
+            }
+            let _ = windows::Win32::Foundation::CloseHandle(process);
+        }
+        format!("{exe} {title:?}")
     }
 }
 

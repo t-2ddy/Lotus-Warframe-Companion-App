@@ -3,6 +3,9 @@
 //
 //   npm run bump -- 0.2.0
 //
+// The version needs its bug-fix notes in src/lib/releaseNotes.ts first (shown once in the app after
+// it updates).
+//
 // Then commit, tag v0.2.0 and push the tag: the Release workflow builds the installer.
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -20,6 +23,12 @@ function update(path, pattern, limit = 1) {
   if (n === 0) throw new Error(`${path}: version not found`);
   writeFileSync(path, out);
   console.log(`  ${path}`);
+}
+
+const notes = readFileSync("src/lib/releaseNotes.ts", "utf8");
+if (!notes.includes(`version: "${version}"`)) {
+  console.error(`src/lib/releaseNotes.ts has no notes for ${version}: add a short list of what it fixes first.`);
+  process.exit(1);
 }
 
 console.log(`Version ${version}:`);

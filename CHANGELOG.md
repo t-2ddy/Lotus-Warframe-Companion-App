@@ -5,7 +5,28 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Added
+- A short "what's fixed" popup, shown once after Lotus updates (also under Tools → What's new).
+- Tools: **Bring Warframe to front for overlays** (on by default). When a reward screen, reroll or
+  chat riven opens while another window is in front, Warframe is brought forward so its cards can
+  be read.
+
 ### Changed
+- Riven overlay: stats are always shown at max rank (rank 8), like the Rivens page, so an
+  unranked riven's numbers show what it gives fully upgraded. The panel still says the riven's
+  own rank.
+- Overlays: the game's log lines are now read as the game writes them (its debug output), instead
+  of from EE.log, which the game writes in bursts up to 20 s late. If another app (AlecaFrame,
+  DebugView) already reads that channel, Lotus falls back to EE.log; the Tools page shows which.
+- Relic rewards overlay: the panels open when the game says the reward cards are up and close 15 s
+  later (or when the reward screen closes). If you're tabbed out, the cards are read when you come
+  back, and the panels show for the rest of the 15 s.
+- Relic rewards overlay: no panels in Requiem fissures.
+- Riven overlay: the reroll screen, its cycles and confirms and its closing come from the log
+  again, and chat rivens are looked for only after the log names one. The constant screen reading
+  is gone.
+- Overlays: the panels no longer hide when another window takes the front for less than a
+  second, and the cards are never read while another window covers the game.
 - Riven overlay: cards still fading in read far better. Two of the four cleaned-up copies now
   stretch the card's own brightness range instead of a fixed one; on real screenshots dimmed to
   40%, cards worked out right went from 17 of 70 to 66.
@@ -22,6 +43,26 @@ it's 0.x, anything may still change.
 - Riven overlay: when a weapon's disposition in the data is out of date (Coda Bassocyst: 0.55 on
   the wiki, 0.6 in game), a riven whose numbers all fit a disposition 0.05–0.1 away is worked out
   at that disposition, instead of one of its stats being shown as "not read".
+
+### Fixed
+- Riven overlay: a locked negative read as "0-35.6% Zoom" (lock icon as "0") was dropped. And
+  when the copies of a card each read its name differently, the first copy's stats were used on
+  their own, even when it was the one that missed a stat; now the stats most copies agree on are
+  used, and the shown name is a whole one ("Cell-ampicron", not "npicron").
+- Riven overlay: a locked trait whose lock icon was read as a "0" right before the plus
+  ("0+126.4% Critical Chance") was dropped, its wrapped "Chance" was glued onto the stat above
+  ("Electricity Chance"), and both showed ungraded. A plus now always counts as a sign.
+- Riven overlay: the panels no longer close when the "Choose a trait to lock" menu opens on the
+  reroll screen.
+- Riven overlay: rerolling an unranked (or part-ranked) riven failed with "couldn't grade". The
+  reroll screen shows every riven at max rank, but its numbers were worked out at the riven's own
+  rank.
+- Riven overlay: a new roll at the reroll screen could show wrong numbers (Burston Prime: +266.5%
+  Damage and -47.4% Zoom for a card showing +258.8% and -36.4%). It was read while still fading
+  in, and at the riven's known rank, numbers that didn't fit were stretched to fit instead of
+  rejected. Now such a read is rejected, and a new roll whose name doesn't read yet is read again.
+- Relic rewards overlay: nothing showed when you were the squad's host (the game logs the reward
+  screen differently for the host).
 
 ## [0.1.3] — 2026-10-10
 

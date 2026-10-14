@@ -2,6 +2,7 @@ pub mod arbitration;
 pub mod capture;
 pub mod ducanator;
 pub mod foundry;
+mod gamelog;
 mod images;
 pub mod inventory_view;
 pub mod market;
@@ -79,6 +80,7 @@ pub fn run() {
             overlay::set_riven_overlay,
             overlay::preview_riven_overlay,
             overlay::set_relic_overlay,
+            overlay::set_focus_game,
             overlay::set_debug_logging,
             overlay::debug_folder,
             overlay::preview_relic_overlay,

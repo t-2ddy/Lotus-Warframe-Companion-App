@@ -1,6 +1,7 @@
 //! Wires Trigger → Capture → Translate → Update together on a background thread and reports to the UI.
 
 use std::path::PathBuf;
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -10,12 +11,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::arbitration::{self, ArbData};
 use crate::riven_grades::{self, GradeSheet};
 use crate::capture::{self, find_inventory, find_pid, ProcessSource, Scope, GAME_EXE};
+use crate::gamelog::{self, FeedState, LineMerger};
 use crate::translate::nodes::{self, NodeData};
 use crate::translate::{self, wfcd, ItemIndex};
 use crate::trigger::{default_log_path, last_login_name, parse_line, LogEvent, LogTail};
 use crate::update::{Outcome, Store};
 
-/// How often the watcher checks EE.log.
+/// How often the watcher checks EE.log (live lines from the game's debug output don't wait).
 const POLL: Duration = Duration::from_millis(100);
 /// How often to check whether the game is running.
 const GAME_CHECK: Duration = Duration::from_secs(2);
@@ -50,6 +52,8 @@ pub struct CaptureSummary {
 pub struct Status {
     pub game_running: bool,
     pub log_path: Option<String>,
+    /// True while the game's lines arrive live (debug output); false when only EE.log is read.
+    pub live_log: bool,
     pub last_event: Option<String>,
     pub last_capture: Option<CaptureSummary>,
     pub last_error: Option<String>,
@@ -148,44 +152,71 @@ fn watch(app: AppHandle) {
     }
     let mut tail = LogTail::from_end(&log_path);
     eprintln!("[trigger] watching {}", log_path.display());
+    let feed = gamelog::start();
+    let mut merger = LineMerger::default();
     let mut last_game_check = Instant::now() - GAME_CHECK;
 
     loop {
         if last_game_check.elapsed() >= GAME_CHECK {
             last_game_check = Instant::now();
             let running = find_pid(GAME_EXE).is_some();
+            // Holding the debug channel is what counts: in menus the game can go quiet for a while.
+            let live = running && gamelog::state() == FeedState::Listening;
             let changed = {
                 let mut st = shared.status.lock().unwrap();
-                let changed = st.game_running != running;
+                let changed = st.game_running != running || st.live_log != live;
                 st.game_running = running;
+                st.live_log = live;
                 changed
             };
             if changed {
-                eprintln!("[trigger] game running: {running}");
+                eprintln!("[trigger] game running: {running}, live log: {live}");
+                crate::overlay::on_log_source(live);
                 emit_status(&app, &shared);
             }
         }
 
-        for line in tail.poll() {
-            crate::overlay::on_log_line(&line);
-            let Some(event) = parse_line(&line) else { continue };
-            if let LogEvent::LoggedIn { name } = &event {
-                remember_login(&app, &shared, name.clone(), false);
-                eprintln!("[trigger] LoggedIn");
-            } else {
-                eprintln!("[trigger] {event:?}");
-            }
-            let label = match &event {
-                LogEvent::LoggedIn { .. } => "LoggedIn".to_string(),
-                other => format!("{other:?}"),
-            };
-            shared.status.lock().unwrap().last_event = Some(label);
-            emit_status(&app, &shared);
-            if matches!(event, LogEvent::InventoryArrived { .. } | LogEvent::MissionCommitted) {
-                capture_with_retries(&app, &shared);
+        // Live lines as they come, for up to one poll interval; then the file's new lines.
+        let until = Instant::now() + POLL;
+        loop {
+            match feed.recv_timeout(until.saturating_duration_since(Instant::now())) {
+                Ok(line) => {
+                    merger.live(&line);
+                    on_line(&app, &shared, &line);
+                }
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => {
+                    std::thread::sleep(until.saturating_duration_since(Instant::now()));
+                    break;
+                }
             }
         }
-        std::thread::sleep(POLL);
+        for line in tail.poll() {
+            if merger.file(&line) {
+                on_line(&app, &shared, &line);
+            }
+        }
+    }
+}
+
+/// Handles one game log line, whichever source it came from.
+fn on_line(app: &AppHandle, shared: &Shared, line: &str) {
+    crate::overlay::on_log_line(line);
+    let Some(event) = parse_line(line) else { return };
+    if let LogEvent::LoggedIn { name } = &event {
+        remember_login(app, shared, name.clone(), false);
+        eprintln!("[trigger] LoggedIn");
+    } else {
+        eprintln!("[trigger] {event:?}");
+    }
+    let label = match &event {
+        LogEvent::LoggedIn { .. } => "LoggedIn".to_string(),
+        other => format!("{other:?}"),
+    };
+    shared.status.lock().unwrap().last_event = Some(label);
+    emit_status(app, shared);
+    if matches!(event, LogEvent::InventoryArrived { .. } | LogEvent::MissionCommitted) {
+        capture_with_retries(app, shared);
     }
 }
 

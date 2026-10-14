@@ -3,17 +3,22 @@
 //!
 //! - Chat-link riven: `ThemedDetailedPurchaseDialog.lua: PopulateInfo->…/Randomized/<type>` names
 //!   it; `…DBG: HudVis N` marks the dialog opening/closing (N = 1, or 2 over a riven list).
-//!   The game writes EE.log in bursts (seconds late), so for chat rivens the screen leads and the
-//!   log only supplies the riven type.
-//! - Reroll screen: `Created /Lotus/Interface/OmegaRerollSelection.swf` opens it. Dialogs
+//!   The lines arrive live (`gamelog`); EE.log itself is written in bursts, seconds late, and is
+//!   only the fallback.
+//! - Reroll screen: `OmegaRerollSelection.lua: Diorama setup` opens it (the card is up then;
+//!   AlecaFrame reads it 200 ms later). Leaving it writes `…ytes of recycled effects` or
+//!   `NpcManager::ClearAgents() ReadyToCreateAgents = false` (AlecaFrame's close lines). Dialogs
 //!   (`Dialog::CreateOkCancel(description=…)` then `Dialog::SendResult(4|5)`) carry each cycle
 //!   ("Are you sure you want to cycle <Weapon Name> for 7,000?") and each confirm ("Cycle Riven
 //!   into current selection?"). `DiegeticArtifactCards.lua: DBG: HudVis 0` closes the mod screen.
 //! - The weapon is the `ResourceLoader … (/Lotus/Weapons/…)` line just before either screen.
 //! - Void Fissures (see `docs/plans/relic-rewards.md`): `Mission name: …` starts a mission; each
 //!   squad relic loads as `ResourceLoader … (/Lotus/Types/Game/Projections/…)`; the reward screen
-//!   opens with `VoidProjections: OpenVoidProjectionRewardScreenRMI`, shows the cards at
+//!   opens with `VoidProjections: OpenVoidProjectionRewardScreenRMI` (client) or
+//!   `…OpenVoidProjectionRewardScreen - PostMigration: 0` (host), shows the cards at
 //!   `ProjectionRewardChoice.lua: Got rewards` and closes with `Relic reward screen shut down`.
+//!   The mission's tag (`"activeMissionTag" : "VoidT2",` as client, `activeMissionTag=VoidT2` as
+//!   host) tells Requiem fissures (`VoidT5`) apart: their reward screen isn't relic cards.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScreenEvent {
@@ -25,14 +30,18 @@ pub enum ScreenEvent {
     /// level (1, or 2 when opened over another dialog such as a chat riven list), closing writes
     /// the level below. The log can lag by seconds, so this only prompts a look at the screen.
     DetailsVisibility { level: u32 },
-    /// The reroll screen opened.
+    /// The reroll screen opened (its card is up).
     RerollOpened,
+    /// The reroll screen closed (back to the riven list, or out of the mod screen).
+    RerollClosed,
     /// The mod screen (which contains the reroll screen) closed.
     ModScreenClosed,
     /// A yes/no dialog opened with this text.
     DialogAsked { text: String },
     /// The dialog was answered: 4 = Yes, 5 = No.
     DialogAnswered { result: u32 },
+    /// The mission's tag, e.g. "VoidT2" (Meso fissure); "VoidT5" is Requiem.
+    MissionTag { tag: String },
     /// A mission is starting, e.g. "Kiliken (Venus) - Lith Fissure".
     MissionStarted { name: String },
     /// A squad member's relic loaded, e.g. `/Lotus/Types/Game/Projections/T1VoidProjectionIvaraPrimeABronze`.
@@ -59,8 +68,15 @@ pub fn parse(line: &str) -> Option<ScreenEvent> {
     if let Some(rest) = after(line, "ThemedDetailedPurchaseDialog.lua: DBG: HudVis ") {
         return rest.trim().parse().ok().map(|level| ScreenEvent::DetailsVisibility { level });
     }
-    if line.contains("Created /Lotus/Interface/OmegaRerollSelection.swf") {
+    if line.contains("OmegaRerollSelection.lua: Diorama setup") {
         return Some(ScreenEvent::RerollOpened);
+    }
+    if line.contains("ytes of recycled effects") || line.contains("NpcManager::ClearAgents() ReadyToCreateAgents = false") {
+        return Some(ScreenEvent::RerollClosed);
+    }
+    if let Some(rest) = after(line, "\"activeMissionTag\" : \"").or_else(|| after(line, "activeMissionTag=")) {
+        let tag: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+        return (!tag.is_empty()).then_some(ScreenEvent::MissionTag { tag });
     }
     if line.contains("DiegeticArtifactCards.lua: DBG: HudVis 0") {
         return Some(ScreenEvent::ModScreenClosed);
@@ -82,7 +98,7 @@ pub fn parse(line: &str) -> Option<ScreenEvent> {
         let name = name.rsplit_once(" (").filter(|(_, node)| !node.contains(' ')).map_or(name, |(n, _)| n);
         return Some(ScreenEvent::MissionStarted { name: name.to_string() });
     }
-    if line.contains("VoidProjections: OpenVoidProjectionRewardScreenRMI") {
+    if line.contains("VoidProjections: OpenVoidProjectionRewardScreen") {
         return Some(ScreenEvent::RewardScreenOpened);
     }
     if line.contains("ProjectionRewardChoice.lua: Got rewards") {
@@ -143,7 +159,10 @@ mod tests {
         );
         assert_eq!(parse("575.254 Script [Info]: ThemedDetailedPurchaseDialog.lua: DBG: HudVis 0"), Some(ScreenEvent::DetailsVisibility { level: 0 }));
         assert_eq!(parse("3396.522 Script [Info]: ThemedDetailedPurchaseDialog.lua: DBG: HudVis 2"), Some(ScreenEvent::DetailsVisibility { level: 2 }));
-        assert_eq!(parse("1685.253 Sys [Info]: Created /Lotus/Interface/OmegaRerollSelection.swf"), Some(ScreenEvent::RerollOpened));
+        assert_eq!(parse("1685.253 Sys [Info]: Created /Lotus/Interface/OmegaRerollSelection.swf"), None);
+        assert_eq!(parse("1685.908 Script [Info]: OmegaRerollSelection.lua: Diorama setup"), Some(ScreenEvent::RerollOpened));
+        assert_eq!(parse("1700.012 Sys [Info]: Freed 1,234 bytes of recycled effects"), Some(ScreenEvent::RerollClosed));
+        assert_eq!(parse("1700.013 AI [Info]: NpcManager::ClearAgents() ReadyToCreateAgents = false"), Some(ScreenEvent::RerollClosed));
         assert_eq!(parse("1701.679 Script [Info]: DiegeticArtifactCards.lua: DBG: HudVis 0"), Some(ScreenEvent::ModScreenClosed));
         assert_eq!(
             parse("1685.253 Sys [Info]: ResourceLoader 0x0000023BB8A4ACF0 (/Lotus/Weapons/Tenno/LongGuns/PrimeBurston/PrimeBurston) Found 1,091 items to load (0ms) [Heap: 1/2]"),
@@ -175,6 +194,15 @@ mod tests {
         );
         assert_eq!(parse("3837.189 Sys [Info]: VoidProjections: OpenVoidProjectionRewardScreenRMI"), Some(ScreenEvent::RewardScreenOpened));
         assert_eq!(parse("3842.539 Script [Info]: ProjectionRewardChoice.lua: Got rewards"), Some(ScreenEvent::RewardsReady));
+        // As host (2026-10-14, Io Meso fissure): no "RMI".
+        assert_eq!(
+            parse("!5206.104 Sys [Info]: VoidProjections: OpenVoidProjectionRewardScreen - PostMigration: 0"),
+            Some(ScreenEvent::RewardScreenOpened)
+        );
+        assert_eq!(parse("5226.915 Sys [Info]: VoidProjections: CloseVoidProjectionRewardScreen"), None);
+        // The mission's tag, as client (a JSON line) and as host.
+        assert_eq!(parse("    \"activeMissionTag\" : \"VoidT2\","), Some(ScreenEvent::MissionTag { tag: "VoidT2".into() }));
+        assert_eq!(parse("    activeMissionTag=VoidT5"), Some(ScreenEvent::MissionTag { tag: "VoidT5".into() }));
         assert_eq!(
             parse("3842.346 Sys [Info]: VoidProjections: 589174613ade7fbd0b51c1e7 gets reward /Lotus/StoreItems/Types/Recipes/Components/FormaBlueprint"),
             Some(ScreenEvent::RewardLogged { path: "/Lotus/Types/Recipes/Components/FormaBlueprint".into() })
