@@ -25,3 +25,7 @@ docs/plans/
 
 # Local test builds (cargo --target-dir ../target/tools)
 /target
+
+# Riven card regression set: one account's cards and game screenshots (scripts/riven_cards.py builds it).
+# The tests skip themselves when it's missing.
+fixtures/riven-cards/

@@ -5,6 +5,24 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Changed
+- Riven overlay: cards still fading in read far better. Two of the four cleaned-up copies now
+  stretch the card's own brightness range instead of a fixed one; on real screenshots dimmed to
+  40%, cards worked out right went from 17 of 70 to 66.
+- Riven overlay: a number OCR misread in a common way (a lost decimal point, a lost or extra 1, a
+  1 read as a 7) is repaired when exactly one repair makes every number fit; if none or several
+  do, that stat shows as "not read" and the rest of the riven still works out.
+- Riven overlay: a number split over two lines (".5% Status Chance" and "+1") is joined back.
+- Riven overlay: a faction line read without its number ("Damage to Corpus") still counts as a
+  stat, shown as "not read", instead of failing the card; a negative whose "-" was lost with its
+  icon ("77.7% Impact") is read as the negative; a negative whose label came out as a few letters
+  ("Z m") is the one stat with those letters whose numbers fit (Zoom).
+- Riven overlay: a weapon name misread by a letter or two ("Maqistar", "Catabo/yst") is matched
+  to the weapon when no other weapon is as close.
+- Riven overlay: when a weapon's disposition in the data is out of date (Coda Bassocyst: 0.55 on
+  the wiki, 0.6 in game), a riven whose numbers all fit a disposition 0.05–0.1 away is worked out
+  at that disposition, instead of one of its stats being shown as "not read".
+
 ## [0.1.3] — 2026-10-10
 
 ### Changed

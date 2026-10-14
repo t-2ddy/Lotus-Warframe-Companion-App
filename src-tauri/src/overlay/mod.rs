@@ -15,6 +15,8 @@
 pub mod card;
 pub mod events;
 pub mod ocr;
+#[cfg(test)]
+mod regression;
 pub mod relics;
 pub mod screen;
 
@@ -994,12 +996,12 @@ impl Controller {
     }
 
     /// OCRs a screen copy into a card: reads a few cleaned-up copies at once (see
-    /// [`screen::ocr_variants`]) and takes what most of them agree on. Saves the first copy to
-    /// `overlay-debug` and logs the texts when they change.
+    /// [`screen::ocr_variants`]) and takes what most of them agree on. Saves the screen copy (in
+    /// colour, doubled) to `overlay-debug` and logs the texts when they change.
     fn ocr(&mut self, name: &'static str, shot: &screen::Image, info: &str) -> Option<Card> {
         let variants = screen::ocr_variants(shot);
         if let Some(dir) = debug_dir() {
-            let _ = screen::save_bmp(&variants[0], &dir.join(format!("{name}.bmp")));
+            let _ = screen::save_bmp(&screen::upscale2(shot), &dir.join(format!("{name}.bmp")));
         }
         let reads = read_variants(&variants);
         let texts: Vec<String> = reads.iter().map(|r| r.as_ref().map_or_else(|e| format!("({e})"), |l| l.join(" / "))).collect();
@@ -1062,42 +1064,23 @@ impl Controller {
         let (own, items) = rivens::owned_rivens(&self.shared).unwrap_or_default();
         let mut errors: Vec<String> = Vec::new();
         let mut fitted_variant = None;
-        if card.lost_numbers > 0 {
-            errors.push("a stat's number wasn't read".into());
-        } else if let Some(view) = card::find_own(data, &sheet, &own, card, weapon) {
+        // A number that wasn't read is shown as "not read" (the card is read again while it
+        // settles); the rest still works out.
+        if let Some(view) = card::find_own(data, &sheet, &own, card, weapon) {
             panel.own = true;
             panel.riven = Some(view);
         } else {
-            for kind in types {
-                match card::rebuild(data, &sheet, kind, card, weapon, rank) {
-                    Ok(r) => {
-                        panel.rank_assumed = r.rank_assumed;
-                        panel.riven = Some(r.view);
-                        break;
+            let owned_item = |p: &str| items.keys().any(|(_, item)| item == p);
+            match card::work_out(data, &sheet, card, types, weapon, rank, owned_item) {
+                Ok((r, variant)) => {
+                    for note in &r.notes {
+                        olog!("{}: {note}", card.title);
                     }
-                    Err(why) => errors.push(format!("{kind}: {why}")),
+                    panel.rank_assumed = r.rank_assumed;
+                    panel.riven = Some(r.view);
+                    fitted_variant = variant;
                 }
-            }
-            if types.is_empty() {
-                errors.push("riven type unknown".into());
-            }
-            // The base weapon's numbers don't fit and the game didn't say which variant it's
-            // shown with: try the variants, the user's own first (Kompressa 1.15 vs Kompressa
-            // Prime 0.6).
-            if panel.riven.is_none() && variant_unknown {
-                let base = card::weapon_path(data, card, None).unwrap_or_default();
-                let mut variants: Vec<&str> = data.family(&base).into_iter().map(|(p, _)| p).filter(|p| *p != base).collect();
-                variants.sort_by_key(|p| !items.keys().any(|(_, item)| item == p));
-                'variants: for v in variants {
-                    for kind in types {
-                        if let Ok(r) = card::rebuild(data, &sheet, kind, card, Some(v), rank) {
-                            panel.rank_assumed = r.rank_assumed;
-                            panel.riven = Some(r.view);
-                            fitted_variant = data.weapons.get(v).map(|w| w.name.clone());
-                            break 'variants;
-                        }
-                    }
-                }
+                Err(why) => errors = why,
             }
         }
         match &panel.riven {

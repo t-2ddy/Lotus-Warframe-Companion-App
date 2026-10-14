@@ -223,19 +223,51 @@ pub fn save_bmp(img: &Image, path: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(path, out)
 }
 
-/// The card cleaned up a few different ways for OCR, each doubled in size: as shown, then as
-/// dark text on light (by brightness, contrast-stretched brightness, and brightest channel).
-/// OCR's slips differ between them ("+1 91 .1%" in one, "+191.10/0" in another), so reading
-/// all of them and taking the majority (see `card::consensus`) beats any single read.
+/// The card cleaned up a few different ways for OCR, each doubled in size, as dark text on
+/// light: brightness stretched between the card's own background and text levels (two ways),
+/// stretched over a fixed range, and simply inverted. OCR's slips differ between them ("+1 91
+/// .1%" in one, "+191.10/0" in another), so reading all of them and taking the majority (see
+/// `card::consensus`) beats any single read.
+///
+/// Measured on 70 game screenshots, also dimmed to 75/55/40% like a card fading in (the
+/// regression set's screenshots, 2026-10-13): the fixed range reads 99% of numbers right on a
+/// fully shown card but none at 40%; the card's own levels keep 92–97% at every brightness. These
+/// four work out 271 of 280 reads, against 204 for the copies used before (as shown, inverted,
+/// fixed range, brightest channel). The riven text is coloured like its icons (purple), so
+/// keeping only the text's colour doesn't remove the icons; it lost most of the text instead.
 pub fn ocr_variants(img: &Image) -> Vec<Image> {
-    let lum = |r: i32, g: i32, b: i32| (r * 299 + g * 587 + b * 114) / 1000;
-    let stretch = |v: i32, low: i32, span: i32| (255 - (v - low).clamp(0, span) * 255 / span) as u8;
     vec![
-        upscale2(img),
-        upscale2(&grey(img, |r, g, b| (255 - lum(r, g, b)) as u8)),
+        upscale2(&own_levels(img, 950, 15, 100)),
+        upscale2(&own_levels(img, 980, 20, 95)),
         upscale2(&grey(img, |r, g, b| stretch(lum(r, g, b), 40, 140))),
-        upscale2(&grey(img, |r, g, b| stretch(r.max(g).max(b), 50, 150))),
+        upscale2(&grey(img, |r, g, b| (255 - lum(r, g, b)) as u8)),
     ]
+}
+
+fn lum(r: i32, g: i32, b: i32) -> i32 {
+    (r * 299 + g * 587 + b * 114) / 1000
+}
+
+/// Brightness `v` from `low` to `low + span` as white to black (dark text on light).
+fn stretch(v: i32, low: i32, span: i32) -> u8 {
+    (255 - (v - low).clamp(0, span) * 255 / span) as u8
+}
+
+/// Brightness stretched between the card's background (the median) and its text (the `top`
+/// per-mille brightest pixel), from `from` to `to` percent of the way. Follows a card that's
+/// still fading in, where a fixed range sees nothing.
+fn own_levels(img: &Image, top: usize, from: i32, to: i32) -> Image {
+    let mut levels: Vec<i32> = img.bgra.chunks_exact(4).map(|p| lum(i32::from(p[2]), i32::from(p[1]), i32::from(p[0]))).collect();
+    if levels.is_empty() {
+        return grey(img, |r, g, b| (255 - lum(r, g, b)) as u8);
+    }
+    levels.sort_unstable();
+    let background = levels[levels.len() / 2];
+    let text = levels[(levels.len() * top / 1000).min(levels.len() - 1)];
+    let range = (text - background).max(20);
+    let low = background + range * from / 100;
+    let span = (range * (to - from) / 100).max(10);
+    grey(img, move |r, g, b| stretch(lum(r, g, b), low, span))
 }
 
 /// Each pixel mapped to a grey level from its red, green and blue.

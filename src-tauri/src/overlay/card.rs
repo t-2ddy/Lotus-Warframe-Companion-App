@@ -61,7 +61,7 @@ impl Card {
     pub fn same_as(&self, other: &Card) -> bool {
         norm(&self.title) == norm(&other.title)
             && self.stats.len() == other.stats.len()
-            && self.stats.iter().zip(&other.stats).all(|(a, b)| (a.value - b.value).abs() < 0.05)
+            && self.stats.iter().zip(&other.stats).all(|(a, b)| (a.value - b.value).abs() < 0.05 || (a.value.is_nan() && b.value.is_nan()))
     }
 }
 
@@ -177,9 +177,13 @@ pub fn consensus(reads: &[Card]) -> Option<Card> {
     let agreeing: Vec<&Card> = reads.iter().filter(|c| norm(&c.title) == title_key && c.stats.len() == count).collect();
     let stats: Vec<CardStat> = (0..count)
         .map(|i| {
-            // Number and unit together, to a tenth (the precision cards show).
-            let (value, unit) = vote(agreeing.iter().map(|c| ((c.stats[i].value * 100.0).round() as i64, c.stats[i].unit)))
-                .map_or((0.0, Unit::Plain), |(v, u)| (v as f64 / 100.0, u));
+            // Number and unit together, to a tenth (the precision cards show). A number some
+            // copies read beats none ("not read" is NaN).
+            let read = agreeing.iter().filter(|c| !c.stats[i].value.is_nan()).map(|c| ((c.stats[i].value * 100.0).round() as i64, c.stats[i].unit));
+            let (value, unit) = vote(read).map_or_else(
+                || (f64::NAN, agreeing.first().map_or(Unit::Plain, |c| c.stats[i].unit)),
+                |(v, u)| (v as f64 / 100.0, u),
+            );
             // A label hidden by its icon reads as nothing in some copies: any read beats none.
             let label = vote(agreeing.iter().map(|c| c.stats[i].label.clone()).filter(|l| !l.is_empty())).unwrap_or_default();
             CardStat { value, unit, label }
@@ -188,14 +192,57 @@ pub fn consensus(reads: &[Card]) -> Option<Card> {
     // The title and stat lines as shown: from the first read with the most agreed numbers.
     let matching = |c: &Card| c.stats.iter().zip(&stats).filter(|(a, b)| (a.value - b.value).abs() < 0.005).count();
     let best = agreeing.iter().copied().reduce(|best, c| if matching(c) > matching(best) { c } else { best })?;
+    // As `parse_card` counts them, after the vote: a number one copy read isn't lost.
+    let lost_numbers = stats.iter().filter(|s| s.value.is_nan() || s.value.abs() >= MAX_STAT).count();
     Some(Card {
         title: best.title.clone(),
         stats,
         mastery: vote(reads.iter().filter_map(|c| c.mastery)),
         rerolls: vote(reads.iter().filter_map(|c| c.rerolls)),
         stat_lines: best.stat_lines.clone(),
-        lost_numbers: vote(agreeing.iter().map(|c| c.lost_numbers)).unwrap_or(0),
+        lost_numbers,
     })
+}
+
+/// A number OCR split off its line: the sign and first digits on one line, the rest (".5% Status
+/// Chance") on the line before or after. Joined back into one line.
+fn join_split_numbers(lines: &[String]) -> Vec<String> {
+    let bare = |l: &str| {
+        let mut c = l.trim().chars();
+        let digits: String = c.clone().skip(1).filter(|c| *c != ' ').collect();
+        matches!(c.next(), Some('+' | '-' | '−' | '–')) && !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+    };
+    let rest = |l: &str| l.trim().starts_with('.') && l.chars().any(char::is_alphabetic);
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let (a, b) = (&lines[i], lines.get(i + 1));
+        match b {
+            Some(b) if bare(a) && rest(b) => {
+                out.push(format!("{}{}", a.trim().replace(' ', ""), b.trim()));
+                i += 2;
+            }
+            Some(b) if rest(a) && bare(b) => {
+                out.push(format!("{}{}", b.trim().replace(' ', ""), a.trim()));
+                i += 2;
+            }
+            _ => {
+                out.push(a.clone());
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// A stat line whose sign OCR lost with its icon ("77.7% *Impact", "59.40/0 Z m"): a percentage
+/// at the start of the line.
+fn unsigned_stat_line(line: &str) -> Option<(f64, Unit, String)> {
+    let line = line.trim();
+    if !line.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    stat_line(&format!("+{line}")).filter(|(_, unit, _)| *unit == Unit::Percent)
 }
 
 /// Parses OCR lines of one card. `None` unless it has a title and at least two stats.
@@ -205,7 +252,7 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
     let mut stat_lines: Vec<String> = Vec::new();
     let (mut mastery, mut rerolls) = (None, None);
     let mut lost_numbers = 0;
-    for raw in lines {
+    for raw in &join_split_numbers(lines) {
         let line = raw.trim();
         if line.is_empty() {
             continue;
@@ -250,8 +297,17 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
             title_parts.push(line.to_string());
         } else if mastery.is_none() && is_faction_label(line) {
             // A whole label on its own ("Damage to Infested", its "x0.98" not read yet), not
-            // the end of the label above.
+            // the end of the label above. Kept with no number: it still counts as a stat (the
+            // others' numbers depend on how many there are), shown as "not read". The card is
+            // read again while it settles.
             lost_numbers += 1;
+            stats.push(CardStat { value: f64::NAN, unit: Unit::Times, label: norm(line) });
+            stat_lines.push(line.to_string());
+        } else if let Some((value, unit, label)) = unsigned_stat_line(line).filter(|_| mastery.is_none() && stats.len() >= 3) {
+            // A number without its sign after three stats: the negative (a riven has at most
+            // three positives), its "-" lost with the icon.
+            stats.push(CardStat { value: -value, unit, label });
+            stat_lines.push(format!("-{line}"));
         } else if mastery.is_none() && !compact.starts_with("MR") && looks_like_words(line.trim_end_matches(')')) {
             // A long label wraps onto its own line ("-46.2% Magazine" / "Capacity", "Fire Rate
             // (x2 for" / "Bows)").
@@ -477,6 +533,8 @@ pub struct Identified {
     pub view: RivenView,
     /// The rank wasn't known, so it was worked out from the numbers.
     pub rank_assumed: bool,
+    /// Misread numbers that were repaired or left as "not read", for overlay.log.
+    pub notes: Vec<String>,
 }
 
 /// One step of the number as the card shows it, in raw units: `x0.98` (0.01), `+13.5%` (0.001),
@@ -498,7 +556,7 @@ fn raw_value(stat: &CardStat, data_label: &str) -> f64 {
 }
 
 /// The riven's weapon path for a card. The title uses the base weapon name ("Burston"), so match
-/// that; fall back to the logged weapon.
+/// that; fall back to the logged weapon, then to a name OCR misread by a letter or two.
 pub fn weapon_path(data: &RivenData, card: &Card, logged: Option<&str>) -> Option<String> {
     let want = norm(card.weapon_name());
     data.weapons
@@ -507,6 +565,42 @@ pub fn weapon_path(data: &RivenData, card: &Card, logged: Option<&str>) -> Optio
         .map(|(p, _)| p.clone())
         .min()
         .or_else(|| logged.filter(|p| data.weapons.contains_key(*p)).map(String::from))
+        .or_else(|| misread_weapon(data, &want))
+}
+
+/// The weapon a misread name is closest to ("Maqistar", "Catabo/yst"): within a letter (two for
+/// names of 8+ letters), and only if no other weapon is as close. Short names are left alone.
+fn misread_weapon(data: &RivenData, want: &str) -> Option<String> {
+    let allowed = match want.chars().count() {
+        0..=4 => return None,
+        5..=7 => 1,
+        _ => 2,
+    };
+    let want: Vec<char> = want.chars().collect();
+    let mut best: Option<(usize, String, String)> = None; // (distance, name, path)
+    let mut tie = false;
+    for (path, w) in &data.weapons {
+        let name = norm(&w.name);
+        let d = edit_distance(&want, &name.chars().collect::<Vec<_>>());
+        if d > allowed {
+            continue;
+        }
+        match &best {
+            Some((bd, bn, bp)) if d == *bd => {
+                if name != *bn {
+                    tie = true;
+                } else if path < bp {
+                    best = Some((d, name, path.clone()));
+                }
+            }
+            Some((bd, _, _)) if d > *bd => {}
+            _ => {
+                best = Some((d, name, path.clone()));
+                tie = false;
+            }
+        }
+    }
+    best.filter(|_| !tie).map(|(_, _, path)| path)
 }
 
 /// The disposition the card's numbers use: the logged ("Fits in") weapon's, when it's in the same
@@ -565,7 +659,7 @@ fn stat_distance(v: &RivenView, card: &Card) -> f64 {
     v.stats
         .iter()
         .zip(&card.stats)
-        .map(|(s, c)| nums(&s.text).map_or(100.0, |n| (n - c.value).abs()))
+        .map(|(s, c)| if c.value.is_nan() { 0.0 } else { nums(&s.text).map_or(100.0, |n| (n - c.value).abs()) })
         .sum::<f64>()
         + 100.0 * (v.stats.len() as f64 - card.stats.len() as f64).abs()
 }
@@ -581,10 +675,30 @@ pub fn rebuild(
     logged_weapon: Option<&str>,
     rank: Option<u32>,
 ) -> Result<Identified, String> {
+    rebuild_at(data, sheet, riven_type, card, logged_weapon, rank, None)
+}
+
+/// The disposition the data gives the card's weapon: the logged weapon's, else the base weapon's.
+fn listed_disposition(data: &RivenData, card: &Card, logged_weapon: Option<&str>) -> Option<f64> {
+    shown_disposition(data, card, logged_weapon)
+        .or_else(|| weapon_path(data, card, logged_weapon).and_then(|p| data.weapons.get(&p)).map(|w| w.disposition))
+}
+
+/// `rebuild` with the numbers worked out at `disposition` instead of the data's.
+fn rebuild_at(
+    data: &RivenData,
+    sheet: &GradeSheet,
+    riven_type: &str,
+    card: &Card,
+    logged_weapon: Option<&str>,
+    rank: Option<u32>,
+    disposition: Option<f64>,
+) -> Result<Identified, String> {
     let kind = data.types.get(riven_type).ok_or_else(|| format!("unknown riven type {riven_type}"))?;
     let compat = weapon_path(data, card, logged_weapon).ok_or_else(|| format!("unknown weapon \"{}\"", card.weapon_name()))?;
-    let disposition =
-        shown_disposition(data, card, logged_weapon).unwrap_or_else(|| data.weapons.get(&compat).map_or(1.0, |w| w.disposition));
+    let disposition = disposition
+        .or_else(|| shown_disposition(data, card, logged_weapon))
+        .unwrap_or_else(|| data.weapons.get(&compat).map_or(1.0, |w| w.disposition));
 
     // Tags: from the label; a readable label that matches nothing is a trait the data doesn't
     // have yet (a new splice), shown as read and ungraded so the rest of the riven still works
@@ -618,6 +732,29 @@ pub fn rebuild(
     // A label hidden by its icon that the name doesn't give (a curse): one of the icon stats,
     // the first whose numbers fit. Slash first: its icon hides the label entirely.
     let not_recognised = || format!("stat not recognised: \"{}\" ({})", card.stats[i].label, card.stats[i].value);
+    let junk = &card.stats[i].label;
+    if !junk.is_empty() && junk.len() <= 3 && card.stats[i].value < 0.0 {
+        // The negative's label as a few letters ("59.40/0 Z m" for "-59.4% Zoom"): a stat whose
+        // name has those letters in order, if exactly one such stat fits.
+        let mut fitted: Vec<Identified> = Vec::new();
+        for (tag, s) in &kind.stats {
+            if tags.iter().flatten().any(|u| u == tag) || !in_order(junk, &label_key(&s.label)) {
+                continue;
+            }
+            let mut tried = tags.clone();
+            tried[i] = Some(tag.clone());
+            if tried.iter().all(Option::is_some) {
+                let tried: Vec<String> = tried.into_iter().flatten().collect();
+                if let Ok(r) = rebuild_tagged(data, sheet, kind, riven_type, card, compat.clone(), disposition, rank, &tried) {
+                    fitted.push(r);
+                }
+            }
+        }
+        return match fitted.len() {
+            1 => Ok(fitted.remove(0)),
+            _ => Err(not_recognised()),
+        };
+    }
     if !card.stats[i].label.is_empty() || card.stats[i].unit != Unit::Percent {
         return Err(not_recognised());
     }
@@ -639,6 +776,12 @@ pub fn rebuild(
     Err(first_err.unwrap_or_else(not_recognised))
 }
 
+/// Every letter of `short` appears in `long`, in order ("zm" in "zoom").
+fn in_order(short: &str, long: &str) -> bool {
+    let mut rest = long.chars();
+    short.chars().all(|c| rest.any(|l| l == c))
+}
+
 /// Stats shown with an icon before the label, which OCR may lose with it; most likely first.
 const ICON_STATS: [&str; 7] = [
     "WeaponSlashDamageMod",
@@ -649,6 +792,71 @@ const ICON_STATS: [&str; 7] = [
     "WeaponElectricityDamageMod",
     "WeaponToxinDamageMod",
 ];
+
+/// Works a card out as a riven that isn't the user's own: each riven type in turn, then, when the
+/// base weapon's numbers don't fit and the game didn't say which variant the card is shown with,
+/// the weapon's variants (`owned` ones first: Kompressa 1.15 vs Kompressa Prime 0.6). Returns
+/// the riven and the variant's name when a variant's numbers fitted; else why each try failed.
+pub fn work_out(
+    data: &RivenData,
+    sheet: &GradeSheet,
+    card: &Card,
+    types: &[String],
+    weapon: Option<&str>,
+    rank: Option<u32>,
+    owned: impl Fn(&str) -> bool,
+) -> Result<(Identified, Option<String>), Vec<String>> {
+    let mut errors = Vec::new();
+    let mut repaired = None;
+    for kind in types {
+        match rebuild(data, sheet, kind, card, weapon, rank) {
+            Ok(r) if r.notes.is_empty() => return Ok((r, None)),
+            // Worked out only by repairing or dropping a number: a variant whose numbers fit as
+            // read is more likely right (a wrong disposition throws every number off).
+            Ok(r) => {
+                repaired.get_or_insert((r, None));
+            }
+            Err(why) => errors.push(format!("{kind}: {why}")),
+        }
+    }
+    if types.is_empty() {
+        errors.push("riven type unknown".into());
+    }
+    if variant_unknown(data, card, weapon) {
+        let base = weapon_path(data, card, None).unwrap_or_default();
+        let mut variants: Vec<&str> = data.family(&base).into_iter().map(|(p, _)| p).filter(|p| *p != base).collect();
+        variants.sort_by_key(|p| !owned(p));
+        for v in variants {
+            for kind in types {
+                if let Ok(r) = rebuild(data, sheet, kind, card, Some(v), rank) {
+                    let name = data.weapons.get(v).map(|w| w.name.clone());
+                    if r.notes.is_empty() {
+                        return Ok((r, name));
+                    }
+                    repaired.get_or_insert((r, name));
+                }
+            }
+        }
+    }
+    // The data's disposition may be behind a change: the wiki and the game's files have each
+    // lagged one (Haalvu's export, Coda Bassocyst's wiki page, October 2026). A disposition a
+    // step or two away (DE moves them by 0.05–0.1) where every number fits as read beats
+    // repairing or dropping one. Only one side can fit when the listed value doesn't.
+    if let Some(listed) = listed_disposition(data, card, weapon) {
+        for step in [0.05, -0.05, 0.1, -0.1] {
+            let d = ((listed + step) * 100.0).round() / 100.0;
+            for kind in types {
+                if let Ok(mut r) = rebuild_at(data, sheet, kind, card, weapon, rank, Some(d)) {
+                    if r.notes.is_empty() {
+                        r.notes.push(format!("numbers fit disposition {d}, not the data's {listed}"));
+                        return Ok((r, None));
+                    }
+                }
+            }
+        }
+    }
+    repaired.ok_or(errors)
+}
 
 /// `rebuild` once every card stat has a tag.
 #[allow(clippy::too_many_arguments)]
@@ -670,6 +878,7 @@ fn rebuild_tagged(
     let mut pending = Vec::new(); // (card position, tag, is_buff)
     let mut unread: Vec<Unread> = Vec::new();
     let mut buff_at = Vec::new(); // is_buff for each card stat, in card order
+    let named = name_tags(kind, card.riven_name());
     for (i, (stat, tag)) in card.stats.iter().zip(tags).enumerate() {
         let Some(info) = rivens::stat_info(kind, tag) else {
             let is_buff = if stat.unit == Unit::Times { stat.value >= 1.0 } else { stat.value >= 0.0 };
@@ -679,19 +888,23 @@ fn rebuild_tagged(
         };
         let raw = raw_value(stat, &info.label);
         // A curse goes against the stat's usual direction; a negative-only stat is always one.
-        let is_buff = !rivens::curse_only(&info) && raw.signum() == info.value.signum();
+        // Without a number, the riven's name says (it lists every positive).
+        let is_buff = if stat.value.is_nan() {
+            named.contains(tag)
+        } else {
+            !rivens::curse_only(&info) && raw.signum() == info.value.signum()
+        };
         buff_at.push(is_buff);
         if damaged(stat, tag, &info.label) {
             unread.push(Unread { at: Some(i), tag: tag.clone(), is_buff, info });
             continue;
         }
         let base = if is_buff { info.value } else { rivens::curse_base(&info) };
-        lines.push((tag.clone(), raw, is_buff, base, display_step(stat, &info.label)));
+        lines.push(Line { tag: tag.clone(), raw, buff: is_buff, base, step: display_step(stat, &info.label), at: i, info });
     }
     // The riven's name lists every positive: one the card read missed (an icon can hide a
     // whole line) is added from it.
-    let positives = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count() + unread.iter().filter(|u| u.is_buff).count();
-    let named = name_tags(kind, card.riven_name());
+    let positives = lines.iter().filter(|l| l.buff).count() + pending.iter().filter(|p| p.2).count() + unread.iter().filter(|u| u.is_buff).count();
     if named.len() > positives {
         let missing: Vec<&String> = named.iter().filter(|t| !tags.contains(t)).collect();
         if missing.len() >= named.len() - positives {
@@ -702,7 +915,7 @@ fn rebuild_tagged(
             }
         }
     }
-    let nb = lines.iter().filter(|l| l.2).count() + pending.iter().filter(|p| p.2).count() + unread.iter().filter(|u| u.is_buff).count();
+    let nb = lines.iter().filter(|l| l.buff).count() + pending.iter().filter(|p| p.2).count() + unread.iter().filter(|u| u.is_buff).count();
     let nc = lines.len() + pending.len() + unread.len() - nb;
     if nb < 2 || nc > 1 {
         return Err(format!("{nb} positives and {nc} negatives"));
@@ -721,29 +934,71 @@ fn rebuild_tagged(
     };
     // Each stat's roll (0 = 90% of its full value, 1 = 110%), and how far that can be off
     // because the card rounds the number (x0.98 on a rank 0 riven is anywhere in ±0.01).
-    let rolls = |r: u32| -> Vec<(f64, f64)> {
+    let rolls = |lines: &[Line], r: u32| -> Vec<(f64, f64)> {
         lines
             .iter()
-            .map(|(_, raw, buff, base, step)| {
-                let full = full(*base, *buff, r);
-                ((raw / full - 0.9) / 0.2, step / full.abs() / 0.2)
+            .map(|l| {
+                let full = full(l.base, l.buff, r);
+                ((l.raw / full - 0.9) / 0.2, l.step / full.abs() / 0.2)
             })
             .collect()
     };
     let fits = |f: &[(f64, f64)]| f.iter().all(|(x, off)| (-0.12 - off..=1.12 + off).contains(x));
+    let rank_for = |lines: &[Line]| match rank {
+        Some(r) => fits(&rolls(lines, r)).then_some(r),
+        None => (0..=rivens::MAX_RANK).rev().find(|r| fits(&rolls(lines, *r))),
+    };
+    let mut notes = Vec::new();
+    if rank_for(&lines).is_none() {
+        // One number OCR misread: try the usual slips on each, and keep a repair only if it's
+        // the single one that makes every number fit.
+        let mut fixes: Vec<(usize, f64, f64)> = Vec::new(); // (line, shown, raw)
+        for (k, l) in lines.iter().enumerate() {
+            let stat = &card.stats[l.at];
+            if stat.unit == Unit::Times {
+                continue;
+            }
+            let per_shown = l.raw / stat.value;
+            for shown in repairs(stat.value) {
+                let mut tried = lines.clone();
+                tried[k].raw = shown * per_shown;
+                if rank_for(&tried).is_some() && !fixes.iter().any(|f| f.0 == k && (f.1 - shown).abs() < 0.05) {
+                    fixes.push((k, shown, shown * per_shown));
+                }
+            }
+        }
+        if let [(k, shown, raw)] = fixes[..] {
+            notes.push(format!("read {} as {shown}", card.stat_lines.get(lines[k].at).map_or("?", String::as_str)));
+            lines[k].raw = raw;
+        } else {
+            // No single repair: if exactly one number keeps the rest from fitting, it's shown
+            // as "not read" (it still counts as a stat) and the rest is worked out.
+            let lone: Vec<usize> = (0..lines.len())
+                .filter(|k| {
+                    let mut rest = lines.clone();
+                    rest.remove(*k);
+                    !rest.is_empty() && rank_for(&rest).is_some()
+                })
+                .collect();
+            if let [k] = lone[..] {
+                let l = lines.remove(k);
+                notes.push(format!("couldn't read {} (no repair fits)", card.stat_lines.get(l.at).map_or("?", String::as_str)));
+                unread.push(Unread { at: Some(l.at), tag: l.tag, is_buff: l.buff, info: l.info });
+            }
+        }
+    }
     let (rank, rank_assumed) = match rank {
         Some(r) => (r, false),
         None => {
-            let found = (0..=rivens::MAX_RANK).rev().find(|r| fits(&rolls(*r)));
-            let at_8: Vec<f64> = rolls(8).into_iter().map(|(x, _)| x).collect();
-            let r = found.ok_or_else(|| format!("numbers don't fit any rank (rolls at rank 8: {at_8:?})"))?;
+            let at_8: Vec<f64> = rolls(&lines, 8).into_iter().map(|(x, _)| x).collect();
+            let r = rank_for(&lines).ok_or_else(|| format!("numbers don't fit any rank (rolls at rank 8: {at_8:?})"))?;
             (r, true)
         }
     };
-    let f: Vec<f64> = rolls(rank).into_iter().map(|(x, _)| x).collect();
+    let f: Vec<f64> = rolls(&lines, rank).into_iter().map(|(x, _)| x).collect();
     let roll = |x: f64| (x.clamp(0.0, 1.0) * f64::from(0x3FFF_FFFFu32)).round() as u64;
-    let mut buffs: Vec<_> = lines.iter().zip(&f).filter(|(l, _)| l.2).map(|(l, x)| json!({"Tag": l.0, "Value": roll(*x)})).collect();
-    let mut curses: Vec<_> = lines.iter().zip(&f).filter(|(l, _)| !l.2).map(|(l, x)| json!({"Tag": l.0, "Value": roll(*x)})).collect();
+    let mut buffs: Vec<_> = lines.iter().zip(&f).filter(|(l, _)| l.buff).map(|(l, x)| json!({"Tag": l.tag, "Value": roll(*x)})).collect();
+    let mut curses: Vec<_> = lines.iter().zip(&f).filter(|(l, _)| !l.buff).map(|(l, x)| json!({"Tag": l.tag, "Value": roll(*x)})).collect();
     for (_, tag, is_buff) in &pending {
         let entry = json!({"Tag": tag, "Value": 0});
         if *is_buff { buffs.push(entry) } else { curses.push(entry) }
@@ -797,7 +1052,44 @@ fn rebuild_tagged(
             rivens::apply_grade(&mut view, sheet);
         }
     }
-    Ok(Identified { view, rank_assumed })
+    Ok(Identified { view, rank_assumed, notes })
+}
+
+/// A card stat worked out from its number: `raw` as the riven data counts it (0.995 for
+/// "+99.5%"), `base` the data's value for it as a buff or curse, `step` how far the card's
+/// rounding can move it, `at` its place on the card.
+#[derive(Clone)]
+struct Line {
+    tag: String,
+    raw: f64,
+    buff: bool,
+    base: f64,
+    step: f64,
+    at: usize,
+    info: rivens::StatInfo,
+}
+
+/// What a misread number may have been: a lost or extra decimal place ("+1 1 .7%" for 117%), a
+/// lost or extra leading 1, or a 7 read for a 1 or the other way round ("+745.7%" for 145.7%).
+fn repairs(shown: f64) -> Vec<f64> {
+    let sign = if shown < 0.0 { -1.0 } else { 1.0 };
+    let text = format!("{:.1}", shown.abs());
+    let text = text.strip_suffix(".0").unwrap_or(&text).to_string();
+    let mut out = vec![shown.abs() * 10.0, shown.abs() / 10.0];
+    let mut texts = vec![format!("1{text}")];
+    if let Some(rest) = text.strip_prefix('1').filter(|r| !r.is_empty() && !r.starts_with('.')) {
+        texts.push(rest.to_string());
+    }
+    for (i, c) in text.char_indices() {
+        let swap = match c {
+            '7' => '1',
+            '1' => '7',
+            _ => continue,
+        };
+        texts.push(format!("{}{swap}{}", &text[..i], &text[i + 1..]));
+    }
+    out.extend(texts.iter().filter_map(|t| t.parse::<f64>().ok()));
+    out.into_iter().filter(|v| *v > 0.0 && *v < MAX_STAT).map(|v| sign * (v * 10.0).round() / 10.0).collect()
 }
 
 /// A stat whose number couldn't be read: `at` its place on the card, or `None` if the card read
@@ -809,10 +1101,14 @@ struct Unread {
     info: rivens::StatInfo,
 }
 
-/// A number OCR damaged past using: a percentage read without its "%" ("+1 f Electricity" for
+/// A number OCR damaged past using: not read at all (a faction line without its "x0.98"), four
+/// digits before the point, a percentage read without its "%" ("+1 f Electricity" for
 /// "+1xx.x% Electricity", the digits lost with the icon), or a faction multiplier without its
 /// "x".
 fn damaged(stat: &CardStat, tag: &str, label: &str) -> bool {
+    if stat.value.is_nan() || stat.value.abs() >= MAX_STAT {
+        return true;
+    }
     if tag.contains("FactionDamage") {
         return stat.unit != Unit::Times;
     }
@@ -1098,6 +1394,23 @@ mod tests {
     }
 
     #[test]
+    fn misread_weapon_names_find_the_weapon() {
+        // riven_misfits.jsonl: "Maqistar" and "Catabo/yst" ended as "unknown weapon".
+        let d = rivens::data();
+        let d = &*d;
+        let path = |title: &str| weapon_path(d, &card_titled(title), None).and_then(|p| d.weapons.get(&p).map(|w| w.name.clone()));
+        assert_eq!(path("Maqistar Acri-forticron").as_deref(), Some("Magistar"));
+        assert_eq!(path("Catabo/yst Deci-critaada").as_deref(), Some("Catabolyst"));
+        // Too short to guess, or nothing close.
+        assert_eq!(path("Boaf Acri-satidex"), None);
+        assert_eq!(path("Zzzzzzzz Acri-satidex"), None);
+    }
+
+    fn card_titled(title: &str) -> Card {
+        Card { title: title.into(), ..Card::empty() }
+    }
+
+    #[test]
     fn rejects_non_cards() {
         assert!(parse_card(&lines("ITEM DETAILS / Rifle Riven Mod / TRADEABLE")).is_none());
     }
@@ -1245,6 +1558,20 @@ mod slash_icon_tests {
         assert_eq!(r.view.rank, 8);
         let texts: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
         assert_eq!(texts, ["+85.3% Critical Chance", "+52.2% Toxin", "+74.2% Critical Damage", "-27% Zoom"]);
+    }
+
+    #[test]
+    fn a_nearby_disposition_beats_dropping_a_number() {
+        // overlay.log 2026-10-13: the wiki has Coda Bassocyst at 0.55, but the game's files (and
+        // the card's numbers) say 0.6. At 0.55, Viral alone was out of range and shown "not read".
+        let d = rivens::data();
+        let d = &*d;
+        let c = card("Coda Bassocyst Cari- / critapha / +47% 6 Heat / +55.2% \"Viral / +51.8% Critical Chance / -20.2% Zoom / MR 13 / 07");
+        let types = ["LotusShotgunRandomModRare".to_string()];
+        let (r, _) = work_out(d, &GradeSheet::default(), &c, &types, None, None, |_| false).unwrap();
+        assert_eq!((r.view.rank, r.view.disposition), (8, 0.6));
+        assert!(r.view.stats.iter().all(|s| !s.unread));
+        assert_eq!(r.notes, ["numbers fit disposition 0.6, not the data's 0.55"]);
     }
 
     #[test]
@@ -1453,5 +1780,101 @@ mod slash_icon_tests {
         let texts: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
         assert!(texts.contains(&"-114% Slash"), "{texts:?}");
         assert!(r.view.stats.iter().all(|s| !s.pending), "{texts:?}");
+    }
+}
+
+/// OCR slips around icons and line breaks (riven_misfits.jsonl, 2026-10-09 to 10-12; the riven
+/// card regression set has these and more).
+#[cfg(test)]
+mod ocr_slip_tests {
+    use super::*;
+
+    fn card(s: &str) -> Card {
+        parse_card(&s.split(" / ").map(String::from).collect::<Vec<_>>()).unwrap()
+    }
+    const TORID: Option<&str> = Some("/Lotus/Weapons/ClanTech/Bio/BioWeapon");
+    const RIFLE: &str = "LotusRifleRandomModRare";
+
+    fn texts(r: &Identified) -> Vec<(&str, bool)> {
+        r.view.stats.iter().map(|s| (s.text.as_str(), s.unread)).collect()
+    }
+
+    #[test]
+    fn a_number_split_over_two_lines_is_joined() {
+        // The Slash icon pushed "+1" below ".5% Status Chance": the line was dropped, so the
+        // card had a stat too few. Joined, it's a stat whose number fits nothing: "not read".
+        let c = card("Burston Eni-scidex / +163.10/0 (v Slash / .5% Status Chance / +1 / +313.2% Weak Point / Damage / -115% YPuncture / / MR9 / 075");
+        assert_eq!(c.stat_lines[1], "+1.5% Status Chance");
+        assert_eq!(c.stats.len(), 4);
+        let d = rivens::data();
+        let r = rebuild(&d, &GradeSheet::default(), RIFLE, &c, Some("/Lotus/Weapons/Tenno/LongGuns/PrimeBurston/PrimeBurston"), None).unwrap();
+        assert_eq!(r.view.rank, 8);
+        assert_eq!(texts(&r)[0], ("+163.1% Slash", false));
+        assert!(r.view.stats[1].unread && r.view.stats[1].tag == "WeaponStunChanceMod");
+        assert_eq!(r.notes.len(), 1, "{:?}", r.notes);
+    }
+
+    #[test]
+    fn a_faction_line_without_its_number_still_counts() {
+        // "Damage to Corpus" read without its "x0.xx": leaving it out changed the other numbers'
+        // multiplier, so nothing fit.
+        let c = card("Vectis Hexa-critatis / +142% Critical Chance / +90.2% Status Chance / +105.3% Critical Damage / Damage to Corpus / MR 12 / 052 \\");
+        assert_eq!((c.stats.len(), c.lost_numbers), (4, 1));
+        let d = rivens::data();
+        let r = rebuild(&d, &GradeSheet::default(), RIFLE, &c, Some("/Lotus/Weapons/Tenno/LongGuns/PrimeVectis/PrimeVectisRifle"), None).unwrap();
+        let corpus = &r.view.stats[3];
+        assert!(corpus.unread && !corpus.good && corpus.tag == "WeaponFactionDamageCorpus", "{:?}", texts(&r));
+        assert_eq!(r.view.stats.iter().filter(|s| !s.unread).count(), 3);
+    }
+
+    #[test]
+    fn a_read_number_beats_a_lost_one_in_the_vote() {
+        let lost = card("Vectis Hexa-critatis / +142% Critical Chance / +90.2% Status Chance / +105.3% Critical Damage / Damage to Corpus");
+        let read = card("Vectis Hexa-critatis / +142% Critical Chance / +90.2% Status Chance / +105.3% Critical Damage / x0.55 Damage to Corpus");
+        let c = consensus(&[lost.clone(), lost, read]).unwrap();
+        assert_eq!((c.stats[3].value, c.lost_numbers), (0.55, 0));
+    }
+
+    #[test]
+    fn a_negative_that_lost_its_sign_and_label() {
+        // "-59.4% Zoom" read as "59.40/0 Z m": the only stat whose name has a z then an m, and
+        // whose numbers fit.
+        let c = card("Torid Sati-caricron / +178.2% Critical Chance / +117.8% \"Viral / +120.6% Multishot / 59.40/0 Z m / MR 10 / 033");
+        assert_eq!((c.stats[3].value, c.stat_lines[3].as_str()), (-59.4, "-59.40/0 Z m"));
+        let d = rivens::data();
+        let r = rebuild(&d, &GradeSheet::default(), RIFLE, &c, TORID, None).unwrap();
+        assert_eq!(r.view.stats[3].tag, "WeaponZoomFovMod");
+        assert_eq!(texts(&r)[3], ("-59.4% Zoom", false));
+    }
+
+    #[test]
+    fn a_misread_digit_is_repaired_when_only_one_repair_fits() {
+        // The user's Torid Crita-acriata with its Critical Damage's 1 read as a 7.
+        let c = card("Torid Crita-acriata / +198.6% Critical Chance / +752.1% Critical Damage / +188.2% Damage / -90% Projectile Speed / MR 13 / 013");
+        let d = rivens::data();
+        let r = rebuild(&d, &GradeSheet::default(), RIFLE, &c, TORID, None).unwrap();
+        assert_eq!(texts(&r)[1], ("+152.1% Critical Damage", false));
+        assert_eq!(r.view.rank, 8);
+        assert_eq!(r.notes, ["read +752.1% Critical Damage as 152.1"]);
+    }
+
+    #[test]
+    fn a_number_with_several_possible_repairs_is_not_read() {
+        // "+1 1 .70/0 Z Toxin": 117% and 111.7% both fit, so neither is guessed.
+        let c = card("Torid Sati-caritox / +119.9% Multishot / +114.8% ? Viral / +1 1 .70/0 Z Toxin / -53.8% Zoom / MR 11 / 0 223");
+        let d = rivens::data();
+        let r = rebuild(&d, &GradeSheet::default(), RIFLE, &c, TORID, None).unwrap();
+        let toxin = &r.view.stats[2];
+        assert!(toxin.unread && toxin.tag == "WeaponToxinDamageMod", "{:?}", texts(&r));
+        assert_eq!(r.view.stats.iter().filter(|s| !s.unread).count(), 3);
+    }
+
+    #[test]
+    fn repairs_cover_the_usual_slips() {
+        let r = repairs(745.7);
+        assert!(r.contains(&145.7) && r.contains(&74.6) && !r.contains(&745.7), "{r:?}");
+        let r = repairs(11.7);
+        assert!(r.contains(&117.0) && r.contains(&111.7), "{r:?}");
+        assert!(repairs(-52.1).iter().all(|v| *v < 0.0));
     }
 }
