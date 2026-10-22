@@ -24,6 +24,20 @@
     relicSources: string[];
     ready: boolean;
     buy: { path: string; count: number }[];
+    /** With platinum: no parts owned (resources aside), so the whole set is the thing to buy. */
+    ownsNoParts: boolean;
+    /** From relics: each missing part, the owned relics that drop it (Intact chance), for the popup. */
+    relicNeeds: RelicNeed[];
+    /** Easy: owned, building, ready (build it now) or set (every part held, some to craft). */
+    stage: "owned" | "building" | "ready" | "set" | "";
+  };
+  type RelicNeed = {
+    path: string;
+    name: string;
+    image: string | null;
+    overlay: string | null;
+    missing: number;
+    relics: { name: string; owned: number; chance: number }[];
   };
   type MasteryData = {
     hasData: boolean;
@@ -109,6 +123,12 @@
       return seg;
     });
   }
+  /** The progress-box row under the pointer (box title and row index); its ring segment grows. */
+  let hoveredRow = $state<{ box: string; i: number } | null>(null);
+  const isHovered = (box: string, i: number) => hoveredRow?.box === box && hoveredRow.i === i;
+  const hoverRow = (box: string, i: number) => () => (hoveredRow = { box, i });
+  const leaveRow = (box: string, i: number) => () => isHovered(box, i) && (hoveredRow = null);
+
   const sum = (list: Progress[]) => ({
     done: list.reduce((a, p) => a + p.done, 0),
     total: list.reduce((a, p) => a + p.total, 0),
@@ -117,6 +137,29 @@
   const progressInRank = $derived(data ? data.totalXp - data.rankStart : 0);
   const rankSpan = $derived(data ? data.nextRank - data.rankStart : 1);
   const rankPct = $derived(Math.min(100, Math.max(0, (100 * progressInRank) / rankSpan)));
+
+  /** The Easy card under the pointer: its XP shows as a lighter stretch on the rank bar. */
+  let hovered = $state<Suggestion | null>(null);
+  const previewGain = $derived(mode === "easy" && hovered ? hovered.xpGain : 0);
+  const previewPct = $derived(Math.min(100, Math.max(0, (100 * (progressInRank + previewGain)) / rankSpan)));
+  const previewRanksUp = $derived(previewGain > 0 && progressInRank + previewGain >= rankSpan);
+
+  /** The rank header sticks to the top of the page and shrinks once the page scrolls down.
+   *  Pages scroll inside the layout's .content. The gap between the two thresholds is bigger than
+   *  the height the header loses, so shrinking it can't scroll the page back over the threshold. */
+  let headEl = $state<HTMLElement | null>(null);
+  let compactHead = $state(false);
+  $effect(() => {
+    const scroller = headEl?.closest<HTMLElement>(".content");
+    if (!scroller) return;
+    const onScroll = () => {
+      if (!compactHead && scroller.scrollTop > 90) compactHead = true;
+      else if (compactHead && scroller.scrollTop < 10) compactHead = false;
+    };
+    onScroll();
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  });
 
   /** Platinum cost of a suggestion: null while any part is unpriced, undefined if a part can't be bought. */
   function cost(s: Suggestion): number | null | undefined {
@@ -144,6 +187,46 @@
     mode === "easy" ? (data?.easy ?? []) : mode === "relics" ? (data?.relics ?? []) : priced.map((x) => x.s),
   );
 
+  /** The "From relics" or "With platinum" card whose popup is open, and which tab opened it. */
+  let detail = $state<Suggestion | null>(null);
+  let detailMode = $state<Mode>("relics");
+
+  /** Opens a set's popup and asks for the prices it shows (cached by the backend): the missing
+   *  parts from relics; the set and every part with platinum (a set's market path is its own). */
+  async function openDetail(s: Suggestion) {
+    detail = s;
+    detailMode = mode;
+    const paths = mode === "platinum" ? [s.path, ...s.parts.map((p) => p.path)] : s.relicNeeds.map((n) => n.path);
+    const keys = [...new Set(paths)].filter((path) => !prices[path]).map((path) => ({ path, rank: 0 }));
+    if (!keys.length) return;
+    try {
+      const result = await invoke<PriceView[]>("request_prices", { keys });
+      for (const p of result) prices[p.path] = p;
+    } catch {}
+  }
+
+  function onCardKey(e: KeyboardEvent, s: Suggestion) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openDetail(s);
+    }
+  }
+
+  /** Buying every missing part of the open set: null while any is unpriced, undefined if one can't be bought. */
+  const detailCost = $derived.by(() => {
+    if (!detail) return null;
+    if (detailMode === "platinum") return cost(detail);
+    let total = 0;
+    for (const n of detail.relicNeeds) {
+      const p = prices[n.path];
+      if (!p || (p.status === "loading" && p.wts === null)) return null;
+      if (p.status === "untradable" || p.wts === null) return undefined;
+      total += p.wts * n.missing;
+    }
+    return total;
+  });
+
   async function toggleFavorite(s: Suggestion) {
     const on = !s.favorite;
     s.favorite = on;
@@ -155,8 +238,20 @@
   }
 </script>
 
+<svelte:window onkeydown={(e) => e.key === "Escape" && detail && (detail = null)} />
+
 {#snippet platinum()}
   <img class="plat-icon" src="/icons/platinum.png" alt="platinum" />
+{/snippet}
+
+{#snippet priceText(price: PriceView | undefined, count: number, verb: string)}
+  {#if !price || (price.status === "loading" && price.wts === null)}
+    <span class="muted">…</span>
+  {:else if price.wts === null}
+    <span class="muted">Not traded</span>
+  {:else}
+    {verb} {(price.wts * count).toLocaleString()} {@render platinum()}
+  {/if}
 {/snippet}
 
 {#snippet progressBox(title: string, rows: Progress[])}
@@ -167,12 +262,18 @@
     <div class="box-body">
       <!-- Progress ring, one coloured segment per row sized by its share of the box total.
            r = 15.9155 makes the circumference 100, so dash lengths are percents. -->
+      <div class="ring-wrap">
       <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="{title}: {pct(all)}% done">
         <circle class="ring-track" cx="18" cy="18" r="15.9155" />
         {#each segs as s, i}
           {#if s.length > 0}
+            <!-- svelte-ignore a11y_no_static_element_interactions (pointer-only highlight; the rows carry the same data) -->
             <circle
               class="ring-seg"
+              class:active={isHovered(title, i)}
+              class:dim={hoveredRow?.box === title && !isHovered(title, i)}
+              onpointerenter={hoverRow(title, i)}
+              onpointerleave={leaveRow(title, i)}
               cx="18"
               cy="18"
               r="15.9155"
@@ -184,12 +285,19 @@
             </circle>
           {/if}
         {/each}
-        <text x="18" y="18">{pct(all)}%</text>
       </svg>
-      <dl>
+      <!-- HTML over the ring, not SVG text: redrawing the rotated SVG as segments animate made
+           counter-rotated text shake by a sub-pixel. -->
+      <span class="ring-pct" aria-hidden="true">{pct(all)}%</span>
+      </div>
+      <dl class:hovering={hoveredRow?.box === title}>
         {#each rows as r, i}
-          <dt><span class="swatch" style="background: {segs[i].color}"></span>{r.label}</dt>
-          <dd><span class="row-pct">{pct(r)}%</span> {r.done}/{r.total}</dd>
+          <dt class:active={isHovered(title, i)} onpointerenter={hoverRow(title, i)} onpointerleave={leaveRow(title, i)}>
+            <span class="swatch" style="background: {segs[i].color}"></span>{r.label}
+          </dt>
+          <dd class:active={isHovered(title, i)} onpointerenter={hoverRow(title, i)} onpointerleave={leaveRow(title, i)}>
+            <span class="row-pct">{pct(r)}%</span> {r.done}/{r.total}
+          </dd>
         {/each}
       </dl>
     </div>
@@ -201,7 +309,7 @@
 {:else if !data.hasData}
   <p class="muted">No inventory captured yet. Log in or finish a mission with the app open.</p>
 {:else}
-  <header class="rank-head">
+  <header class="rank-head" class:compact={compactHead} bind:this={headEl}>
     <div class="rank">
       <span class="rank-number">{data.rank > 30 ? `L${data.rank - 30}` : data.rank}</span>
       <img
@@ -213,13 +321,21 @@
     </div>
     <div class="xp">
       <div class="xp-text">
-        <span class="xp-pct">{Math.floor(rankPct)}%</span>
+        <span class="xp-pct">
+          {Math.floor(rankPct)}%
+          {#if previewGain > 0}
+            <span class="gain">+{previewGain.toLocaleString()} XP → {previewRanksUp ? "rank up" : `${Math.floor(previewPct)}%`}</span>
+          {/if}
+        </span>
         <span>
           {progressInRank.toLocaleString()} / {rankSpan.toLocaleString()} XP
           {#if data.readyForTest}<span class="ready">· Rank test available</span>{/if}
         </span>
       </div>
-      <div class="bar"><div class="fill" style="width: {rankPct}%"></div></div>
+      <div class="bar">
+        <div class="preview" style="width: {previewGain > 0 ? previewPct : rankPct}%"></div>
+        <div class="fill" style="width: {rankPct}%"></div>
+      </div>
       <div class="breakdown">
         Total {data.totalXp.toLocaleString()} XP: items {data.breakdown.items.toLocaleString()} ·
         star chart {data.breakdown.nodes.toLocaleString()} · Steel Path {data.breakdown.steelPathNodes.toLocaleString()} ·
@@ -256,13 +372,32 @@
         Prime sets closest to being built, where every missing part drops from a relic you own. Fewest missing parts first.
       </p>
     {:else}
-      <p class="muted note">Items you own or are building in the foundry that aren't mastered yet.</p>
+      <p class="muted note">
+        Items that aren't mastered yet: ones you own or are building, then sets ready to build, then full sets where you
+        have every part (some still blueprints to craft).
+      </p>
     {/if}
 
     <div class="cards">
       {#each list as s (s.path)}
         {@const c = mode === "platinum" ? cost(s) : null}
-        <article class="card">
+        {@const opens = mode !== "easy"}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex (the card is role="button" whenever it's focusable) -->
+        <article
+          class="card lift"
+          class:clickable={opens}
+          role={opens ? "button" : undefined}
+          tabindex={opens ? 0 : undefined}
+          aria-label={mode === "relics"
+            ? `${s.name}: relics and prices for the missing parts`
+            : opens
+              ? `${s.name}: set and part prices`
+              : undefined}
+          onclick={opens ? () => openDetail(s) : undefined}
+          onkeydown={opens ? (e) => onCardKey(e, s) : undefined}
+          onpointerenter={() => (hovered = s)}
+          onpointerleave={() => hovered === s && (hovered = null)}
+        >
           <div class="pic">
             {#if s.image}
               <img src={imageUrl(s.image)} alt="" loading="lazy" onerror={markMissing} />
@@ -276,7 +411,10 @@
               <button
                 class="star"
                 class:on={s.favorite}
-                onclick={() => toggleFavorite(s)}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(s);
+                }}
                 aria-label={s.favorite ? `Unstar ${s.name}` : `Star ${s.name}`}
                 aria-pressed={s.favorite}
               >
@@ -290,7 +428,10 @@
             {#if mode === "easy"}
               <div class="detail">
                 <span>Level <b>{s.rank}</b>/{s.maxRank}</span>
-                {#if s.building}<span class="chip building">Building</span>{:else}<span class="chip owned">Owned</span>{/if}
+                {#if s.stage === "building"}<span class="chip building">Foundry</span>
+                {:else if s.stage === "ready"}<span class="chip owned">Ready to build</span>
+                {:else if s.stage === "set"}<span class="chip building" title="You have every part; some are still blueprints to craft, or resources are short">Full set</span>
+                {:else}<span class="chip owned">Inventory</span>{/if}
               </div>
             {:else if mode === "relics"}
               <div class="detail">
@@ -312,8 +453,8 @@
               </div>
             {/if}
 
-            {#if mode !== "easy" && s.parts.length}
-              <ul class="parts">
+            {#if (mode !== "easy" || s.stage === "ready" || s.stage === "set") && s.parts.length}
+              <ul class="parts" class:big={mode === "relics"}>
                 {#each s.parts as p}
                   <li class:enough={p.owned >= p.needed} title="{p.name}: {p.owned.toLocaleString()} owned, {p.needed} needed">
                     {#if p.image}
@@ -336,6 +477,136 @@
       {/each}
     </div>
 
+    {#if detail}
+      {@const d = detail}
+      <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+      <div class="backdrop" onclick={(e) => e.target === e.currentTarget && (detail = null)}>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="relic-detail-title">
+          <header class="dialog-head">
+            {#if d.image}<img class="dialog-pic" src={imageUrl(d.image)} alt="" onerror={markMissing} />{/if}
+            <div>
+              <h2 id="relic-detail-title">{d.name}</h2>
+              <p class="muted">
+                {#if detailMode === "platinum"}
+                  {d.buy.length} part{d.buy.length === 1 ? "" : "s"} to buy · +{d.xpGain.toLocaleString()} XP
+                {:else}
+                  {d.relicPartsOwned}/{d.relicPartsTotal} relic parts · +{d.xpGain.toLocaleString()} XP
+                {/if}
+              </p>
+            </div>
+            <!-- svelte-ignore a11y_autofocus -->
+            <button class="close" onclick={() => (detail = null)} aria-label="Close" autofocus>
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" /></svg>
+            </button>
+          </header>
+
+          {#if detailMode === "platinum"}
+            {@const setPrice = prices[d.path]}
+            <!-- Highlighted: what to buy. The missing parts, or the whole set when no part is owned. -->
+            <ul class="needs">
+              <li class:pick={d.ownsNoParts}>
+                <div class="need-head">
+                  <span class="need-icon">
+                    {#if d.image}<img src={imageUrl(d.image)} alt="" onerror={markMissing} />{/if}
+                  </span>
+                  <span class="need-name">
+                    {d.name} Set
+                    {#if d.ownsNoParts}<span class="pick-tag">Buy this</span>{/if}
+                  </span>
+                  <span class="need-price" title="Lowest warframe.market sell price">
+                    {@render priceText(setPrice, 1, d.ownsNoParts ? "Buy" : "")}
+                  </span>
+                </div>
+              </li>
+            </ul>
+            <h3 class="dialog-sub">Parts</h3>
+            <ul class="needs">
+              {#each d.parts as p}
+                {@const need = d.buy.find((b) => b.path === p.path)}
+                {@const price = prices[p.path]}
+                <li class:pick={need && !d.ownsNoParts}>
+                  <div class="need-head">
+                    <span class="need-icon">
+                      {#if p.image}<img src={imageUrl(p.image)} alt="" onerror={markMissing} />{/if}
+                      {#if p.overlay}<img class="overlay" src={imageUrl(p.overlay)} alt="" onerror={hideOnError} />{/if}
+                    </span>
+                    <span class="need-name">
+                      {p.name}
+                      <span class="muted part-count">{compact(p.owned)}/{p.needed} owned</span>
+                    </span>
+                    <span class="need-price" class:muted={!need} title="Lowest warframe.market sell price">
+                      {#if need}
+                        {@render priceText(price, need.count, need.count > 1 ? `Buy ${need.count} ·` : "Buy")}
+                      {:else if p.owned >= p.needed}
+                        <span class="have">Owned</span>
+                      {:else}
+                        <span>Resource</span>
+                      {/if}
+                    </span>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+            <footer class="dialog-foot">
+              <span class="muted">Prices: lowest warframe.market sell order.</span>
+              {#if detailCost !== undefined}
+                <span>
+                  {d.ownsNoParts ? "Parts separately:" : "Buy missing parts:"}
+                  {#if detailCost === null}…{:else}<b>{detailCost.toLocaleString()}</b>{/if}
+                  {@render platinum()}
+                </span>
+              {/if}
+            </footer>
+          {:else if !d.relicNeeds.length}
+            <p class="muted">You have every relic part. Build it in the foundry.</p>
+          {:else}
+            <ul class="needs">
+              {#each d.relicNeeds as n (n.path)}
+                {@const price = prices[n.path]}
+                <li>
+                  <div class="need-head">
+                    <span class="need-icon">
+                      {#if n.image}<img src={imageUrl(n.image)} alt="" onerror={markMissing} />{/if}
+                      {#if n.overlay}<img class="overlay" src={imageUrl(n.overlay)} alt="" onerror={hideOnError} />{/if}
+                    </span>
+                    <span class="need-name">{n.name}{#if n.missing > 1}<span class="muted"> ×{n.missing}</span>{/if}</span>
+                    <span class="need-price" title="Lowest warframe.market sell price">
+                      {#if !price || (price.status === "loading" && price.wts === null)}
+                        <span class="muted">…</span>
+                      {:else if price.wts === null}
+                        <span class="muted">Not traded</span>
+                      {:else}
+                        Buy {(price.wts * n.missing).toLocaleString()} {@render platinum()}
+                      {/if}
+                    </span>
+                  </div>
+                  <ul class="drops">
+                    {#each n.relics as r (r.name)}
+                      <li>
+                        <span class="relic">{r.name}</span>
+                        <span class="muted">×{r.owned}</span>
+                        <span class="chance">{r.chance.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</span>
+                      </li>
+                    {/each}
+                  </ul>
+                </li>
+              {/each}
+            </ul>
+            <footer class="dialog-foot">
+              <span class="muted">Drop chances at Intact. Prices: lowest warframe.market sell order.</span>
+              {#if detailCost !== undefined}
+                <span>
+                  Buy all missing:
+                  {#if detailCost === null}…{:else}<b>{detailCost.toLocaleString()}</b>{/if}
+                  {@render platinum()}
+                </span>
+              {/if}
+            </footer>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
     {#if mode === "platinum" && priced.length}
       <div class="total">Total: {platinumTotal.toLocaleString()} {@render platinum()}</div>
     {/if}
@@ -353,11 +624,55 @@
   }
 
   /* Header: rank and XP bar */
+  /* Sticks to the top of .content. The negative margins and top cover .content's 20px padding,
+     so cards scroll under a solid header instead of showing through the gap above it. */
   .rank-head {
+    position: sticky;
+    top: -20px;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 24px;
-    margin-bottom: 20px;
+    margin: -20px -20px 0;
+    padding: 20px;
+    background: var(--bg);
+    border-bottom: 1px solid transparent;
+    transition:
+      padding 0.2s ease-out,
+      gap 0.2s ease-out,
+      border-color 0.2s,
+      box-shadow 0.2s;
+  }
+
+  .rank-head.compact {
+    gap: 14px;
+    padding: 16px 20px 8px;
+    border-bottom-color: var(--line);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  }
+
+  .rank-head.compact .rank-number {
+    font-size: 28px;
+  }
+
+  .rank-head.compact .rank-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .rank-head.compact .xp-text {
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  .rank-head.compact .bar {
+    height: 10px;
+  }
+
+  .rank-head.compact .breakdown {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
   }
 
   .rank {
@@ -370,12 +685,16 @@
     font-size: 56px;
     font-weight: 700;
     line-height: 1;
+    transition: font-size 0.2s ease-out;
   }
 
   .rank-icon {
     width: 64px;
     height: 64px;
     object-fit: contain;
+    transition:
+      width 0.2s ease-out,
+      height 0.2s ease-out;
   }
 
   .xp {
@@ -400,22 +719,46 @@
   }
 
   .bar {
+    position: relative;
     height: 14px;
     border-radius: 7px;
     background: var(--surface-2);
     overflow: hidden;
+    transition: height 0.2s ease-out;
   }
 
   .fill {
+    position: relative;
     height: 100%;
     background: var(--accent);
     border-radius: 7px;
   }
 
+  /* Hovered card's XP: a lighter bar under the fill, so only the gained stretch shows. */
+  .preview {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: rgba(96, 165, 250, 0.45);
+    border-radius: 7px;
+    transition: width 160ms ease-out;
+  }
+
+  .gain {
+    margin-left: 8px;
+    font-weight: 600;
+    color: #93c5fd;
+  }
+
   .breakdown {
     margin-top: 6px;
+    max-height: 40px;
+    overflow: hidden;
     font-size: 12px;
     color: var(--muted);
+    transition:
+      max-height 0.2s ease-out,
+      margin-top 0.2s ease-out,
+      opacity 0.15s;
   }
 
   /* Summary boxes */
@@ -448,11 +791,30 @@
     gap: 12px 16px;
   }
 
-  .ring {
+  .ring-wrap {
+    position: relative;
     flex: none;
     width: 80px;
     height: 80px;
+  }
+
+  .ring-pct {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 17.8px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  .ring {
+    display: block;
+    width: 100%;
+    height: 100%;
     transform: rotate(-90deg);
+    /* A grown segment reaches past the viewBox edge. */
+    overflow: visible;
   }
 
   .ring circle {
@@ -464,8 +826,21 @@
     stroke: var(--surface-2);
   }
 
+  /* Hovering a row (or the segment) grows its segment out from the centre and dims the rest. */
   .ring-seg {
     stroke-linecap: butt;
+    transform-origin: 18px 18px;
+    transition:
+      transform 0.15s ease-out,
+      opacity 0.15s;
+  }
+
+  .ring-seg.active {
+    transform: scale(1.12);
+  }
+
+  .ring-seg.dim {
+    opacity: 0.4;
   }
 
   .swatch {
@@ -477,27 +852,44 @@
     vertical-align: 1px;
   }
 
-  /* Counter-rotated so the percent reads upright. */
-  .ring text {
-    transform: rotate(90deg);
-    transform-origin: 18px 18px;
-    text-anchor: middle;
-    dominant-baseline: central;
-    font-size: 8px;
-    font-weight: 700;
-    fill: var(--text);
-  }
-
   .box dl {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 6px 14px;
     margin: 0;
     font-size: 15px;
   }
 
+  /* The gaps between rows and columns are padding on dt and dd instead of grid gap, so the pointer
+     always sits on a row and moves straight from one to the next. */
+  .box dt,
+  .box dd {
+    padding: 3px 0;
+  }
+
   .box dt {
     text-align: right;
+    padding-right: 14px;
+  }
+
+  /* Other rows fade by colour, not opacity: an opacity transition moves the text onto its own
+     layer and back, which shifts it by a sub-pixel and makes the numbers shake. */
+  .box dt,
+  .box dd,
+  .box .row-pct,
+  .box .swatch {
+    transition:
+      color 0.15s,
+      opacity 0.15s;
+  }
+
+  .box dl.hovering dt:not(.active),
+  .box dl.hovering dd:not(.active),
+  .box dl.hovering dd:not(.active) .row-pct {
+    color: #4b5468;
+  }
+
+  .box dl.hovering dt:not(.active) .swatch {
+    opacity: 0.4;
   }
 
   .box dd {
@@ -710,6 +1102,270 @@
     background: var(--good);
   }
 
+  .card.lift {
+    position: relative;
+    transition:
+      border-color 0.15s,
+      background-color 0.15s,
+      box-shadow 0.15s,
+      transform 0.15s;
+  }
+
+  .card.clickable {
+    cursor: pointer;
+  }
+
+  /* Hover: a lift a little smaller than the Rivens page's. Easy cards lift too, while their XP
+     shows on the rank bar. */
+  .card.lift:hover,
+  .card.clickable:focus-visible {
+    border-color: var(--line-strong);
+    background: var(--surface-hover);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+    transform: translateY(-3px) scale(1.015);
+    z-index: 1;
+  }
+
+  .card.clickable:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .card.clickable:active {
+    transform: translateY(-1px) scale(1.005);
+  }
+
+  /* The set's popup: relics to open and prices to buy, per missing part. */
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  .dialog {
+    width: min(560px, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+    animation: dialog-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dialog {
+      animation: none;
+    }
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .dialog-head h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  .dialog-head p {
+    margin: 2px 0 0;
+    font-size: 13px;
+  }
+
+  .dialog-pic {
+    width: 64px;
+    height: 52px;
+    object-fit: contain;
+  }
+
+  .close {
+    margin-left: auto;
+    align-self: flex-start;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .close:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .close svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+
+  .needs {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+
+  .needs > li {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+
+  .need-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .need-icon {
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--line-strong);
+    display: grid;
+    place-items: center;
+  }
+
+  .need-icon img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+  }
+
+  .need-icon img.overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 24px;
+    height: 24px;
+    transform: translate(-50%, -50%);
+  }
+
+  .need-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+  }
+
+  /* With platinum: what to buy, the missing parts or the whole set when none is owned. */
+  .needs > li.pick {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .pick-tag {
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: 1px;
+  }
+
+  .part-count {
+    display: block;
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .have {
+    color: var(--good);
+  }
+
+  .dialog-sub {
+    margin: 16px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .need-price {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .drops {
+    list-style: none;
+    margin: 8px 0 0 50px;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .drops li {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    font-size: 13px;
+  }
+
+  .relic {
+    font-weight: 600;
+  }
+
+  .chance {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  .dialog-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    font-size: 13px;
+  }
+
+  .dialog-foot > span:last-child {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
   .sources {
     font-size: 13px;
     color: var(--muted);
@@ -732,24 +1388,31 @@
     object-fit: contain;
   }
 
+  /* One row: each circle shrinks below its size when needed so a whole set fits the card. */
   .parts {
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: 0 7px 6px 0;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
   }
 
   .parts li {
     position: relative;
-    width: 38px;
-    height: 38px;
+    flex: 0 1 38px;
+    min-width: 0;
+    aspect-ratio: 1;
     border-radius: 50%;
     background: var(--surface);
     border: 2px solid var(--line-strong);
     display: grid;
     place-items: center;
+  }
+
+  /* From relics: bigger part icons. */
+  .parts.big li {
+    flex-basis: 48px;
   }
 
   .parts li.enough {
@@ -758,8 +1421,8 @@
 
   .parts img,
   .parts .placeholder {
-    width: 26px;
-    height: 26px;
+    width: 72%;
+    height: 72%;
     object-fit: contain;
     border-radius: 50%;
   }
@@ -768,8 +1431,8 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 20px;
-    height: 20px;
+    width: 56%;
+    height: 56%;
     transform: translate(-50%, -50%);
     border-radius: 0;
   }

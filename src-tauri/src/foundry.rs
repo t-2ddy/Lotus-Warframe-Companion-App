@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::pipeline::Shared;
+use crate::translate::wfcd::BLUEPRINT_IMAGE;
 use crate::translate::{
     mastery_xp, Flat, ItemIndex, Masterable, Tab, ACCOUNT, ARCHON_SHARDS, INCARNON, MODULAR_PARTS, SUBSUMED,
 };
@@ -60,7 +61,16 @@ pub struct PartView {
     /// For blueprints: the image of what it builds, drawn over the blueprint picture.
     pub overlay: Option<String>,
     pub needed: u32,
+    /// The part built plus its unbuilt blueprints (a Chassis or a Chassis Blueprint both count).
     pub owned: i64,
+    /// How many of `owned` are unbuilt blueprints.
+    pub blueprints: i64,
+}
+
+/// The blueprint of a built part: a warframe's parts are listed as the built component
+/// (`…ChassisComponent`), which is crafted from `…ChassisBlueprint`. `None` for anything else.
+pub fn blueprint_of(path: &str) -> Option<String> {
+    path.strip_suffix("Component").map(|p| format!("{p}Blueprint"))
 }
 
 #[derive(Debug, Serialize)]
@@ -140,13 +150,25 @@ fn item(
         .iter()
         .map(|p| {
             let part = index.get(&p.path);
+            let blueprint = blueprint_of(&p.path);
+            let built = parts_owned.get(&p.path).copied().unwrap_or(0);
+            let blueprints = blueprint.as_ref().and_then(|bp| parts_owned.get(bp).copied()).unwrap_or(0);
+            let own_image = part.and_then(|i| i.image.clone());
+            // A part that also comes as a blueprint (its count includes them) is drawn like one:
+            // the blueprint picture behind, the part's own picture over it.
+            let (image, overlay) = if blueprint.is_some() {
+                (Some(BLUEPRINT_IMAGE.to_string()), own_image)
+            } else {
+                (own_image, index.blueprint_overlay(&p.path))
+            };
             PartView {
                 path: p.path.clone(),
                 name: index.display_name(&p.path),
-                image: part.and_then(|i| i.image.clone()),
-                overlay: index.blueprint_overlay(&p.path),
+                image,
+                overlay,
                 needed: p.count,
-                owned: parts_owned.get(&p.path).copied().unwrap_or(0),
+                owned: built + blueprints,
+                blueprints,
             }
         })
         .collect();
@@ -168,7 +190,8 @@ fn item(
         incarnon: has(current, INCARNON, &m.path) > 0,
         used_for_crafting: index.used_in_crafting(&m.path),
         favorite: favorites.contains(&m.path),
-        ready_to_build: !parts.is_empty() && parts.iter().all(|p| p.owned >= i64::from(p.needed)),
+        // The parts themselves: a part's blueprint still has to be crafted first.
+        ready_to_build: !parts.is_empty() && parts.iter().all(|p| p.owned - p.blueprints >= i64::from(p.needed)),
         parts,
     }
 }
@@ -255,4 +278,46 @@ mod tests {
         let octavia = &items[2];
         assert!(octavia.subsumed && !octavia.mastered);
     }
+
+    /// A warframe part counts as owned built (`…Component`) or as its unbuilt blueprint
+    /// (`…Blueprint`); the set's parts and counts stay the same, and a blueprint still to craft
+    /// doesn't make the item ready to build.
+    #[test]
+    fn part_blueprints_count_as_owned() {
+        let wr = "/Lotus/Types/Recipes/WarframeRecipes/Nova";
+        let index = ItemIndex::build(&[(
+            "Warframes".into(),
+            format!(
+                r#"[{{"uniqueName":"/Nova","name":"Nova","masterable":true,
+                "components":[{{"uniqueName":"{wr}Blueprint","itemCount":1}},{{"uniqueName":"{wr}ChassisComponent","itemCount":1}},
+                {{"uniqueName":"{wr}HelmetComponent","itemCount":1}}]}}]"#
+            )
+            .into_bytes(),
+        )]);
+        let raw = format!(
+            r#"{{"Recipes": [{{"ItemType": "{wr}Blueprint", "ItemCount": 1}}, {{"ItemType": "{wr}ChassisBlueprint", "ItemCount": 2}}],
+            "MiscItems": [{{"ItemType": "{wr}ChassisComponent", "ItemCount": 1}}, {{"ItemType": "{wr}HelmetComponent", "ItemCount": 1}}]}}"#
+        );
+        let current = parse(raw.as_bytes()).unwrap().values;
+        let items = build(&index, &current, &HashSet::new());
+        let nova = items.iter().find(|i| i.name == "Nova").unwrap();
+        let counts: Vec<(i64, i64)> = nova.parts.iter().map(|p| (p.owned, p.blueprints)).collect();
+        assert_eq!(nova.parts.len(), 3, "same parts per set");
+        assert_eq!(counts, [(1, 0), (3, 2), (1, 0)], "Chassis: 1 built + 2 blueprints");
+        let chassis = &nova.parts[1];
+        assert_eq!(chassis.image.as_deref(), Some(BLUEPRINT_IMAGE), "drawn as a blueprint");
+        assert!(nova.ready_to_build);
+
+        // Only a Chassis Blueprint: owned, but not ready to build.
+        let raw = format!(
+            r#"{{"Recipes": [{{"ItemType": "{wr}Blueprint", "ItemCount": 1}}, {{"ItemType": "{wr}ChassisBlueprint", "ItemCount": 1}}],
+            "MiscItems": [{{"ItemType": "{wr}HelmetComponent", "ItemCount": 1}}]}}"#
+        );
+        let current = parse(raw.as_bytes()).unwrap().values;
+        let items = build(&index, &current, &HashSet::new());
+        let nova = items.iter().find(|i| i.name == "Nova").unwrap();
+        assert_eq!((nova.parts[1].owned, nova.parts[1].blueprints), (1, 1));
+        assert!(!nova.ready_to_build);
+    }
 }
+

@@ -7,6 +7,15 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.5",
+    fixes: [
+      "Foundry and the relic overlay now count a part you hold as a blueprint as owned.",
+      "Mastery Helper: Easy now also lists sets you can build, and hovering a card shows its XP on the rank bar.",
+      "Mastery Helper: click a From relics or With platinum card for part prices, relic drops and the set price.",
+      "Mastery Helper: the rank bar stays at the top while you scroll.",
+    ],
+  },
+  {
     version: "0.1.4",
     fixes: [
       "Overlays no longer show up late or flicker: Lotus now gets the game's log lines as they happen.",

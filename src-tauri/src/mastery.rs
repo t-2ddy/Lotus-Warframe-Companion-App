@@ -89,6 +89,40 @@ pub struct Suggestion {
     pub ready: bool,
     /// With platinum: parts to buy and how many of each.
     pub buy: Vec<BuyPart>,
+    /// With platinum: none of the set's parts are owned (resources aside), so buying the whole
+    /// set is the thing to compare.
+    pub owns_no_parts: bool,
+    /// From relics: each relic part still missing, with the owned relics that drop it.
+    pub relic_needs: Vec<RelicNeed>,
+    /// Easy: "owned", "building", "ready" (every part built and the resources there: build it
+    /// now) or "set" (every part held, some still only as blueprints to craft).
+    pub stage: &'static str,
+}
+
+/// A set part still missing, and where to get it: the owned relics that drop it, or buying it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RelicNeed {
+    /// What relics drop and warframe.market trades (a warframe part's blueprint).
+    pub path: String,
+    pub name: String,
+    pub image: Option<String>,
+    pub overlay: Option<String>,
+    /// How many more are needed.
+    pub missing: i64,
+    /// Owned relics that drop it, most likely first.
+    pub relics: Vec<RelicDrop>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RelicDrop {
+    /// Relic name without refinement ("Meso V15").
+    pub name: String,
+    /// Relics of this name held, every refinement counted.
+    pub owned: i64,
+    /// Drop chance (%) at Intact.
+    pub chance: f64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -226,19 +260,54 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
             relic_sources: Vec::new(),
             ready: false,
             buy: Vec::new(),
+            owns_no_parts: false,
+            relic_needs: Vec::new(),
+            stage: if i.owned > 0 { "owned" } else if building(i) { "building" } else { "" },
         }
     };
     let to_get = |i: &&FoundryItem| i.owned == 0 && !i.mastered && !building(i);
 
-    // Easy: owned or being built, not mastered.
-    let mut easy: Vec<Suggestion> =
-        items.iter().filter(|i| (i.owned > 0 || building(i)) && !i.mastered).map(&suggestion).collect();
-    easy.sort_by(|a, b| b.xp_gain.cmp(&a.xp_gain).then_with(|| a.name.cmp(&b.name)));
+    // A full set: every part held (built, or as its blueprint), resources aside. A part that is a
+    // build of its own (Equinox's Day and Night aspects) counts as a blueprint only with its own
+    // Chassis, Neuroptics and Systems held too.
+    let held = |stem: &str| has(current, "MiscItems", &format!("{stem}Component")) + has(current, "Recipes", &format!("{stem}Blueprint")) > 0;
+    let part_held = |p: &PartView| {
+        if p.owned - p.blueprints >= i64::from(p.needed) {
+            return true; // built
+        }
+        if p.owned < i64::from(p.needed) {
+            return false;
+        }
+        match nested_part(&p.path) {
+            Some(stem) => ["Chassis", "Helmet", "Systems"].iter().all(|sub| held(&format!("{stem}{sub}"))),
+            None => true,
+        }
+    };
+    let full_set =
+        |i: &FoundryItem| !i.parts.is_empty() && i.parts.iter().all(|p| is_resource(index, &p.path) || part_held(p));
+    // Easy: not mastered, and owned, being built, ready to build, or a full set to craft.
+    let mut easy: Vec<Suggestion> = items
+        .iter()
+        .filter(|i| !i.mastered && (i.owned > 0 || building(i) || i.ready_to_build || full_set(i)))
+        .map(|i| {
+            let s = suggestion(i);
+            let stage = if !s.stage.is_empty() { s.stage } else if i.ready_to_build { "ready" } else { "set" };
+            Suggestion { stage, ..s }
+        })
+        .collect();
+    // Least effort first: owned or building (just level it), then ready to build, then sets to craft.
+    let effort = |s: &Suggestion| match s.stage {
+        "owned" | "building" => 0,
+        "ready" => 1,
+        _ => 2,
+    };
+    easy.sort_by(|a, b| effort(a).cmp(&effort(b)).then(b.xp_gain.cmp(&a.xp_gain)).then_with(|| a.name.cmp(&b.name)));
 
     // From relics: sets closest to being built, where every relic part still missing drops from a
     // relic the account holds. Fewest missing parts first; ready-to-build sets at the top.
     let drops = relic_drops(index);
-    let owned_relics = owned_relic_names(index, current);
+    let relic_counts = owned_relic_counts(index, current);
+    let owned_relics: HashSet<&str> = relic_counts.keys().copied().collect();
     // Relics drop Warframe *part blueprints* (`…ChassisBlueprint`) while the recipe lists the built
     // part (`…ChassisComponent`). Map each part to what relics actually drop, and count owning
     // either the built part or its blueprint.
@@ -256,16 +325,10 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
         // Slaytra, Tatsu), which aren't sets you build from relics.
         .filter(|i| i.is_prime)
         .filter_map(|i| {
-            // (part, what relics drop for it, how many owned counting its blueprint)
-            let relic_parts: Vec<(&PartView, String, i64)> = i
-                .parts
-                .iter()
-                .filter_map(|p| {
-                    let key = relic_key(&p.path)?;
-                    let blueprints = if key == p.path { 0 } else { has(current, "Recipes", &key) };
-                    Some((p, key, p.owned + blueprints))
-                })
-                .collect();
+            // (part, what relics drop for it, how many owned; the Foundry's count includes the
+            // part's blueprint)
+            let relic_parts: Vec<(&PartView, String, i64)> =
+                i.parts.iter().filter_map(|p| Some((p, relic_key(&p.path)?, p.owned))).collect();
             if relic_parts.is_empty() {
                 return None;
             }
@@ -282,19 +345,35 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
             }
             sources.sort();
             sources.dedup();
-            // Show part blueprints on the card too: a Chassis icon counts owned Chassis Blueprints,
-            // so the icons agree with the "owned/total relic parts" count.
-            let owned_with_blueprints: HashMap<&str, i64> =
-                relic_parts.iter().map(|(p, _, owned)| (p.path.as_str(), *owned)).collect();
-            let parts = i
-                .parts
+            let relic_needs = missing
                 .iter()
-                .map(|p| PartView { owned: owned_with_blueprints.get(p.path.as_str()).copied().unwrap_or(p.owned), ..p.clone() })
+                .map(|(p, key, owned)| {
+                    let mut relics: Vec<RelicDrop> = drops[key.as_str()]
+                        .iter()
+                        .filter(|(r, _)| owned_relics.contains(r))
+                        .map(|(r, chance)| RelicDrop {
+                            name: r.to_string(),
+                            owned: relic_counts.get(r).copied().unwrap_or(0),
+                            chance: *chance,
+                        })
+                        .collect();
+                    relics.sort_by(|a, b| b.chance.total_cmp(&a.chance).then(b.owned.cmp(&a.owned)).then(a.name.cmp(&b.name)));
+                    RelicNeed {
+                        path: key.clone(),
+                        name: index.display_name(key),
+                        image: p.image.clone(),
+                        overlay: p.overlay.clone(),
+                        missing: i64::from(p.needed) - owned,
+                        relics,
+                    }
+                })
                 .collect();
+            let parts = i.parts.clone();
             Some(Suggestion {
                 relic_parts_owned: (relic_parts.len() - missing.len()) as u32,
                 relic_parts_total: relic_parts.len() as u32,
                 relic_sources: sources,
+                relic_needs,
                 ready: missing.is_empty(),
                 parts,
                 ..suggestion(i)
@@ -322,7 +401,8 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
                 .filter(|p| p.owned < i64::from(p.needed) && !is_resource(index, &p.path))
                 .map(|p| BuyPart { path: p.path.clone(), count: i64::from(p.needed) - p.owned })
                 .collect();
-            (!buy.is_empty()).then(|| Suggestion { buy, ..suggestion(i) })
+            let owns_no_parts = i.parts.iter().all(|p| p.owned == 0 || is_resource(index, &p.path));
+            (!buy.is_empty()).then(|| Suggestion { buy, owns_no_parts, ..suggestion(i) })
         })
         .collect();
 
@@ -353,6 +433,15 @@ fn is_resource(index: &ItemIndex, path: &str) -> bool {
     index.get(path).is_some_and(|i| matches!(i.file.as_str(), "Resources" | "Misc" | "Fish" | "Gear"))
 }
 
+/// A part built from parts of its own, which WFCD doesn't list: Equinox's aspects (Night is
+/// `AnimaComponent`, Day is `AnimusComponent`), each from its own Chassis, Neuroptics (`Helmet`) and
+/// Systems. Returns the path stem those parts share (`…/WarframeRecipes/Anima`).
+fn nested_part(path: &str) -> Option<&str> {
+    const ASPECTS: [&str; 2] =
+        ["/Lotus/Types/Recipes/WarframeRecipes/AnimaComponent", "/Lotus/Types/Recipes/WarframeRecipes/AnimusComponent"];
+    ASPECTS.contains(&path).then(|| path.strip_suffix("Component")).flatten()
+}
+
 /// Part path → the relics (name without refinement) that drop it, with the Intact chance (%).
 fn relic_drops(index: &ItemIndex) -> HashMap<&str, Vec<(&str, f64)>> {
     let mut out: HashMap<&str, Vec<(&str, f64)>> = HashMap::new();
@@ -364,13 +453,15 @@ fn relic_drops(index: &ItemIndex) -> HashMap<&str, Vec<(&str, f64)>> {
     out
 }
 
-/// Relics the account holds (any refinement), by name without refinement.
-fn owned_relic_names<'a>(index: &'a ItemIndex, current: &'a Flat) -> HashSet<&'a str> {
-    section(current, "MiscItems")
-        .filter(|(_, n)| *n > 0)
-        .filter_map(|(path, _)| index.get(path).filter(|i| i.file == "Relics"))
-        .map(|i| split_relic_name(&i.name).0)
-        .collect()
+/// Relics the account holds, by name without refinement, with every refinement counted.
+fn owned_relic_counts<'a>(index: &'a ItemIndex, current: &'a Flat) -> HashMap<&'a str, i64> {
+    let mut out: HashMap<&str, i64> = HashMap::new();
+    for (path, n) in section(current, "MiscItems").filter(|(_, n)| *n > 0) {
+        if let Some(i) = index.get(path).filter(|i| i.file == "Relics") {
+            *out.entry(split_relic_name(&i.name).0).or_default() += n;
+        }
+    }
+    out
 }
 
 #[tauri::command]
@@ -494,6 +585,52 @@ mod tests {
         assert!(!d.platinum.iter().any(|s| s.name == "Frost Prime"), "not something to buy");
     }
 
+    /// Easy also lists sets you hold every part of: ready to build (resources there too) after the
+    /// items you own, then full sets still short of resources or with parts left to craft.
+    #[test]
+    fn full_and_ready_sets_are_easy() {
+        let parts = r#"{"Recipes": [{"ItemCount": 1, "ItemType": "/Lotus/Types/Recipes/FrostPrimeBlueprint"},
+                                    {"ItemCount": 1, "ItemType": "/Lotus/Types/Recipes/FrostPrimeChassis"}]"#;
+        let set = format!("{parts}}}");
+        let d = build(&index(), &NodeData::default(), &parse(set.as_bytes()).unwrap().values, &HashSet::new());
+        let frost = d.easy.iter().find(|s| s.name == "Frost Prime").expect("every part held, so Easy");
+        assert_eq!(frost.stage, "set", "Orokin Cells still missing");
+
+        let ready = format!(r#"{parts}, "MiscItems": [{{"ItemCount": 2, "ItemType": "/Cell"}}], "Suits": [{{"ItemType": "/Volt"}}]}}"#);
+        let d = build(&index(), &NodeData::default(), &parse(ready.as_bytes()).unwrap().values, &HashSet::new());
+        let stages: Vec<(&str, &str)> = d.easy.iter().map(|s| (s.name.as_str(), s.stage)).collect();
+        assert_eq!(stages, [("Volt", "owned"), ("Frost Prime", "ready")], "owned first, then ready to build");
+    }
+
+    /// Equinox's aspects are builds of their own: an aspect blueprint counts toward the set only
+    /// with that aspect's Chassis, Neuroptics and Systems held too.
+    #[test]
+    fn equinox_aspects_need_their_own_parts() {
+        let wr = "/Lotus/Types/Recipes/WarframeRecipes/";
+        let index = ItemIndex::build(&[(
+            "Warframes".into(),
+            format!(
+                r#"[{{"uniqueName":"/Lotus/Powersuits/YinYang/YinYang","name":"Equinox","masterable":true,
+                "components":[{{"uniqueName":"{wr}AnimaAnimusBlueprint","itemCount":1}},{{"uniqueName":"{wr}AnimusComponent","itemCount":1}},
+                {{"uniqueName":"{wr}AnimaComponent","itemCount":1}}]}}]"#
+            )
+            .into_bytes(),
+        )]);
+        let recipes = |extra: &[&str]| {
+            let mut names = vec!["AnimaAnimusBlueprint", "AnimaBlueprint", "AnimusBlueprint", "AnimaChassisBlueprint", "AnimusChassisBlueprint"];
+            names.extend_from_slice(extra);
+            let rows: Vec<String> = names.iter().map(|n| format!(r#"{{"ItemCount": 1, "ItemType": "{wr}{n}"}}"#)).collect();
+            format!(r#"{{"Recipes": [{}]}}"#, rows.join(","))
+        };
+        let easy = |raw: String| {
+            let d = build(&index, &NodeData::default(), &parse(raw.as_bytes()).unwrap().values, &HashSet::new());
+            d.easy.iter().find(|s| s.name == "Equinox").map(|s| s.stage)
+        };
+        assert_eq!(easy(recipes(&[])), None, "aspect blueprints and chassis only");
+        let all = ["AnimaHelmetBlueprint", "AnimaSystemsBlueprint", "AnimusHelmetBlueprint", "AnimusSystemsBlueprint"];
+        assert_eq!(easy(recipes(&all)), Some("set"), "every aspect part held");
+    }
+
     #[test]
     fn all_relic_parts_owned_is_ready() {
         let raw = r#"{
@@ -554,5 +691,14 @@ mod tests {
         let d = build(&index(), &NodeData::default(), &parse(with_relic.as_bytes()).unwrap().values, &HashSet::new());
         let frost = &d.relics[0];
         assert_eq!((frost.relic_parts_owned, frost.relic_parts_total, frost.ready), (1, 2, false));
+        // The popup's breakdown: the one missing part, the owned relic that drops it, held 3 times.
+        assert_eq!(frost.relic_needs.len(), 1);
+        let need = &frost.relic_needs[0];
+        assert_eq!(need.missing, 1);
+        assert_eq!(need.relics.iter().map(|r| r.owned).collect::<Vec<_>>(), [3]);
     }
 }
+
+
+
+

@@ -13,7 +13,10 @@
     /** For blueprints: what it builds, drawn over the blueprint picture. */
     overlay: string | null;
     needed: number;
+    /** Built plus unbuilt blueprints of it. */
     owned: number;
+    /** How many of `owned` are blueprints. */
+    blueprints: number;
   };
 
   type Item = {
@@ -137,6 +140,9 @@
     }
   }
 
+  /** The item's page on the Warframe wiki ("Ack & Brunt" → /w/Ack_%26_Brunt). */
+  const wikiUrl = (name: string) => `https://wiki.warframe.com/w/${encodeURIComponent(name.replace(/ /g, "_"))}`;
+
   function closeFiltersOnOutside(e: MouseEvent) {
     if (filtersOpen && !(e.target as HTMLElement).closest(".filters")) filtersOpen = false;
   }
@@ -226,7 +232,7 @@
           {#if i.parts.length}
             <ul class="parts">
               {#each i.parts as p}
-                <li class:enough={p.owned >= p.needed} title="{p.name}: {p.owned.toLocaleString()} owned, {p.needed} needed">
+                <li class:enough={p.owned >= p.needed} title="{p.name}: {p.owned.toLocaleString()} owned{p.blueprints > 0 ? ` (${p.blueprints.toLocaleString()} as blueprint${p.blueprints > 1 ? "s" : ""})` : ""}, {p.needed} needed">
                   {#if p.image}
                     <img src={imageUrl(p.image)} alt={p.name} loading="lazy" onerror={markMissing} />
                   {:else}
@@ -252,6 +258,10 @@
           {#if mr !== null && i.masteryReq > mr}<span class="tag bad">MR {i.masteryReq}</span>{/if}
           {#if i.subsumed}<span class="tag helminth">Subsumed</span>{/if}
           {#if i.owned > 0}<span class="tag good">Owned{i.owned > 1 ? ` ×${i.owned}` : ""}</span>{/if}
+          <a class="wiki" href={wikiUrl(i.name)} target="_blank" rel="noreferrer" title="Open {i.name} on the Warframe wiki">
+            Wiki
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5h5v5M9.5 2.5 3 9" /></svg>
+          </a>
         </footer>
       </article>
     {:else}
@@ -508,19 +518,23 @@
     border-radius: 8px;
   }
 
+  /* One row: each circle is up to 48px and shrinks so a whole set fits beside the art. */
   .parts {
+    flex: 1;
+    min-width: 0;
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: 0 7px 6px 0;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
   }
 
   .parts li {
     position: relative;
-    width: 38px;
-    height: 38px;
+    flex: 0 1 48px;
+    min-width: 0;
+    aspect-ratio: 1;
     border-radius: 50%;
     background: var(--surface-2);
     border: 2px solid var(--line-strong);
@@ -534,8 +548,8 @@
 
   .parts img,
   .parts .placeholder {
-    width: 30px;
-    height: 30px;
+    width: 79%;
+    height: 79%;
     object-fit: contain;
     border-radius: 50%;
   }
@@ -545,8 +559,8 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 24px;
-    height: 24px;
+    width: 62%;
+    height: 62%;
     transform: translate(-50%, -50%);
     border-radius: 0;
     background: none;
@@ -577,8 +591,33 @@
   footer {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
     margin-top: auto;
+  }
+
+  /* Bottom right of every card, after the tags. */
+  .wiki {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .wiki:hover {
+    color: var(--text);
+  }
+
+  .wiki svg {
+    width: 10px;
+    height: 10px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
   }
 
   .tag {

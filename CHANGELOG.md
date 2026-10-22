@@ -5,6 +5,29 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-10-21
+
+### Added
+- Mastery Helper, Easy: hovering a card shows on the rank bar how much XP the item adds, and the
+  percentage it takes you to (or "rank up").
+- Mastery Helper, With platinum: click a card for the set's price and each part's price. What to
+  buy is highlighted: the missing parts, or the whole set when you own none of its parts.
+- Mastery Helper, From relics: click a card for the missing parts, the owned relics that drop
+  them (with Intact chances) and their prices.
+- Mastery Helper: hovering a row in Game content, Star chart or Intrinsics grows its slice of the
+  ring.
+- Foundry: a Wiki link on every card.
+
+### Changed
+- Mastery Helper: the rank header stays at the top of the page and shrinks as you scroll down.
+- Mastery Helper, Easy: also lists sets ready to build and full sets (every part held, some still
+  blueprints), after the items you own or are building. Chips read Inventory, Foundry, Ready to
+  build and Full set.
+- Foundry: a set's part circles stay on one row and shrink to fit.
+- Foundry: a warframe part counts as owned whether it's built or still a blueprint (a Chassis
+  Blueprint counts toward the Chassis). The tooltip says how many are blueprints, and "Ready to
+  build" still needs the parts built.
+
 ## [0.1.4] — 2026-10-14
 
 ### Added

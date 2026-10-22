@@ -263,8 +263,8 @@ pub fn views(index: &ItemIndex, current: &Flat, game: &GameWindow, cards: &[(f64
         let bp = format!("{}Blueprint", p.path.strip_suffix("Component")?);
         from_relics.contains(bp.as_str()).then_some(bp)
     };
-    // Owned: the part (built, or the blueprint itself) plus an unbuilt blueprint of a built part.
-    let owned_of = |p: &foundry::PartView, drop: &str| p.owned + if drop == p.path { 0 } else { loose.get(drop).copied().unwrap_or(0) };
+    // Owned: the Foundry's count, which includes an unbuilt blueprint of a built part.
+    let owned_of = |p: &foundry::PartView, _drop: &str| p.owned;
     cards
         .iter()
         .map(|(centre, c)| {
