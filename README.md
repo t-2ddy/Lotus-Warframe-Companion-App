@@ -289,7 +289,8 @@ memory APIs, `memchr`, `serde_json`, `rusqlite`, `zstd`, `ureq`.
   (riven data refresh).
 - **Pipeline:**
   1. Each riven's fingerprint (weapon, rank, 30-bit roll per stat) gives each stat's value:
-     base × 1.5 × disposition × 10 × roll × stat-count factor × (rank + 1).
+     base × 1.5 × disposition × 10 × roll × stat-count factor × (rank + 1). Every weapon's
+     disposition is 1.2 since DE flattened them in October 2026 (`rivens::DISPOSITION`).
   2. The roll gives the letter, and the stats are checked against the weapon's sheet row for the
      grade and ideal stats.
   3. The popup searches warframe.market from narrow to wide (same stats, then the main positives,
@@ -338,7 +339,8 @@ window that ignores the mouse until **Ctrl+Tab**. The game must run in **Borderl
   4. **Weapon and variant.**
      - The weapon in the title gives the riven type, from the riven data.
      - The **"Fits in"** box at the bottom right is read for the exact variant (Latron vs Latron
-       Prime), whose disposition the card's numbers use.
+       Prime). Variants used to have different dispositions; at a flat 1.2 they no longer
+       change the numbers.
      - The log's weapon line is the fallback.
   5. **Identify.**
      - **Your own riven:** matched in your inventory by weapon and name, so the rolls are exact.
@@ -375,6 +377,7 @@ window that ignores the mouse until **Ctrl+Tab**. The game must run in **Borderl
 
 #### Riven data updates
 - **Purpose:** keep riven stat values and weapon dispositions current when DE changes them.
+  The app currently overrides every listed disposition with the flat 1.2.
 - **Tech:** `riven_data.rs` (a Rust port of `scripts/gen_rivens.py`), conditional requests with
   `If-None-Match`.
 - **Pipeline:**

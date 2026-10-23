@@ -54,7 +54,7 @@
   let error = $state<string | null>(null);
   let tab = $state("All");
   let search = $state("");
-  let sort = $state<"weapon" | "grade" | "perfectness" | "rerolls" | "disposition">("weapon");
+  let sort = $state<"weapon" | "grade" | "perfectness" | "rerolls">("weapon");
   let gradeFilter = $state("All");
   /** The riven whose popup is open. */
   let selected = $state<Riven | null>(null);
@@ -108,7 +108,6 @@
       return [...list].sort((a, b) => gradeRank(a.grade) - gradeRank(b.grade) || b.perfectness - a.perfectness);
     if (sort === "perfectness") return [...list].sort((a, b) => b.perfectness - a.perfectness);
     if (sort === "rerolls") return [...list].sort((a, b) => b.rerolls - a.rerolls);
-    if (sort === "disposition") return [...list].sort((a, b) => b.disposition - a.disposition);
     return list;
   });
 
@@ -175,7 +174,6 @@
       <option value="grade">Sort: Grade</option>
       <option value="perfectness">Sort: Stat perfectness</option>
       <option value="rerolls">Sort: Rerolls</option>
-      <option value="disposition">Sort: Disposition</option>
     </select>
   </div>
 </div>

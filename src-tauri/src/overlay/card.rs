@@ -695,30 +695,10 @@ pub fn rebuild(
     logged_weapon: Option<&str>,
     rank: Option<u32>,
 ) -> Result<Identified, String> {
-    rebuild_at(data, sheet, riven_type, card, logged_weapon, rank, None)
-}
-
-/// The disposition the data gives the card's weapon: the logged weapon's, else the base weapon's.
-fn listed_disposition(data: &RivenData, card: &Card, logged_weapon: Option<&str>) -> Option<f64> {
-    shown_disposition(data, card, logged_weapon)
-        .or_else(|| weapon_path(data, card, logged_weapon).and_then(|p| data.weapons.get(&p)).map(|w| w.disposition))
-}
-
-/// `rebuild` with the numbers worked out at `disposition` instead of the data's.
-fn rebuild_at(
-    data: &RivenData,
-    sheet: &GradeSheet,
-    riven_type: &str,
-    card: &Card,
-    logged_weapon: Option<&str>,
-    rank: Option<u32>,
-    disposition: Option<f64>,
-) -> Result<Identified, String> {
     let kind = data.types.get(riven_type).ok_or_else(|| format!("unknown riven type {riven_type}"))?;
     let compat = weapon_path(data, card, logged_weapon).ok_or_else(|| format!("unknown weapon \"{}\"", card.weapon_name()))?;
-    let disposition = disposition
-        .or_else(|| shown_disposition(data, card, logged_weapon))
-        .unwrap_or_else(|| data.weapons.get(&compat).map_or(1.0, |w| w.disposition));
+    let disposition = shown_disposition(data, card, logged_weapon)
+        .unwrap_or_else(|| data.weapons.get(&compat).map_or(rivens::DISPOSITION, |w| w.disposition));
 
     // Tags: from the label; a readable label that matches nothing is a trait the data doesn't
     // have yet (a new splice), shown as read and ungraded so the rest of the riven still works
@@ -854,23 +834,6 @@ pub fn work_out(
                         return Ok((r, name));
                     }
                     repaired.get_or_insert((r, name));
-                }
-            }
-        }
-    }
-    // The data's disposition may be behind a change: the wiki and the game's files have each
-    // lagged one (Haalvu's export, Coda Bassocyst's wiki page, October 2026). A disposition a
-    // step or two away (DE moves them by 0.05–0.1) where every number fits as read beats
-    // repairing or dropping one. Only one side can fit when the listed value doesn't.
-    if let Some(listed) = listed_disposition(data, card, weapon) {
-        for step in [0.05, -0.05, 0.1, -0.1] {
-            let d = ((listed + step) * 100.0).round() / 100.0;
-            for kind in types {
-                if let Ok(mut r) = rebuild_at(data, sheet, kind, card, weapon, rank, Some(d)) {
-                    if r.notes.is_empty() {
-                        r.notes.push(format!("numbers fit disposition {d}, not the data's {listed}"));
-                        return Ok((r, None));
-                    }
                 }
             }
         }
@@ -1588,20 +1551,6 @@ mod slash_icon_tests {
         assert_eq!(r.view.rank, 8);
         let texts: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
         assert_eq!(texts, ["+85.3% Critical Chance", "+52.2% Toxin", "+74.2% Critical Damage", "-27% Zoom"]);
-    }
-
-    #[test]
-    fn a_nearby_disposition_beats_dropping_a_number() {
-        // overlay.log 2026-10-13: the wiki has Coda Bassocyst at 0.55, but the game's files (and
-        // the card's numbers) say 0.6. At 0.55, Viral alone was out of range and shown "not read".
-        let d = rivens::data();
-        let d = &*d;
-        let c = card("Coda Bassocyst Cari- / critapha / +47% 6 Heat / +55.2% \"Viral / +51.8% Critical Chance / -20.2% Zoom / MR 13 / 07");
-        let types = ["LotusShotgunRandomModRare".to_string()];
-        let (r, _) = work_out(d, &GradeSheet::default(), &c, &types, None, None, |_| false).unwrap();
-        assert_eq!((r.view.rank, r.view.disposition), (8, 0.6));
-        assert!(r.view.stats.iter().all(|s| !s.unread));
-        assert_eq!(r.notes, ["numbers fit disposition 0.6, not the data's 0.55"]);
     }
 
     #[test]

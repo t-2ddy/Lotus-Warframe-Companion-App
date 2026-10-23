@@ -19,6 +19,10 @@ use crate::translate::{parse, Flat, OwnedRiven};
 /// Stats are shown at this rank (max), the way rivens are compared and traded.
 pub const MAX_RANK: u32 = 8;
 
+/// Every riven's disposition: DE set all weapons to 1.2 (October 2026), so the per-weapon values
+/// in the data no longer apply.
+pub const DISPOSITION: f64 = 1.2;
+
 #[derive(Debug, Deserialize)]
 pub struct RivenData {
     /// When the file was made (`2026-10-09`); the newer of the bundled copy and a download wins.
@@ -85,8 +89,19 @@ impl RivenData {
 
     fn parse(text: &str) -> Result<RivenData, String> {
         let mut data: RivenData = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        // Tests keep each weapon's old value: their cards were captured before the change.
+        if !cfg!(test) {
+            data.flatten_dispositions();
+        }
         data.fill_factions();
         Ok(data)
+    }
+
+    /// Every weapon at [`DISPOSITION`], whatever the data lists.
+    fn flatten_dispositions(&mut self) {
+        for w in self.weapons.values_mut() {
+            w.disposition = DISPOSITION;
+        }
     }
 
     /// Archgun rivens no longer roll Damage to Infested, so the export leaves it out, but older
@@ -621,7 +636,7 @@ pub fn view_with(
     let kind = data.types.get(short)?;
     let compat = fp.compat.clone().unwrap_or_default();
     let weapon = data.weapons.get(&compat);
-    let disposition = disposition.unwrap_or_else(|| weapon.map_or(1.0, |w| w.disposition));
+    let disposition = disposition.unwrap_or_else(|| weapon.map_or(DISPOSITION, |w| w.disposition));
     let stats = stats(data, kind, &fp, disposition, show_rank);
     let graded: Vec<f64> = stats.iter().filter(|s| !s.pending).map(|s| s.quality).collect();
     let perfectness = if graded.is_empty() { 0.0 } else { 100.0 * graded.iter().sum::<f64>() / graded.len() as f64 };
@@ -754,6 +769,15 @@ mod tests {
         assert!(names.contains(&"Latron Prime") && names.contains(&"Latron Wraith"), "{names:?}");
         assert!(d.variants_differ(latron));
         assert!(!d.variants_differ("/Lotus/Weapons/Infested/Pistols/InfVomitGun/InfVomitGunWep"));
+    }
+
+    #[test]
+    fn every_weapon_has_the_same_disposition() {
+        let mut d = bundled();
+        d.flatten_dispositions();
+        assert!(d.weapons.values().all(|w| w.disposition == DISPOSITION));
+        assert!(!d.variants_differ("/Lotus/Weapons/Tenno/Rifle/SemiAutoRifle"), "Latron and Latron Prime alike");
+        assert_eq!(dots(DISPOSITION), 4);
     }
 
     #[test]

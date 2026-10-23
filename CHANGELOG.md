@@ -5,6 +5,15 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Changed
+- Rivens: every riven now uses disposition 1.2 (4/5 dots), matching the game, where DE set all
+  weapons to the same disposition. This applies to the Rivens page, the popup and the riven
+  overlays. Sort by disposition is gone from the Rivens page, since every riven ties.
+
+### Removed
+- Riven overlay: no longer tries a disposition 0.05–0.1 away when a riven's numbers don't fit
+  the data's value. With every weapon at 1.2, that could only accept a misread.
+
 ## [0.1.5] — 2026-10-21
 
 ### Added
