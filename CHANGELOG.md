@@ -5,6 +5,12 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-10-23
+
+### Fixed
+- Build: the image cache tests each use their own folder, so one test's cleanup can no longer
+  delete another's files mid-run (`downloads_once_then_serves_from_disk` failed on CI).
+
 ## [0.1.6] — 2026-10-23
 
 ### Changed
@@ -191,7 +197,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.3...v0.1.4

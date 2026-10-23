@@ -7,6 +7,12 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.7",
+    fixes: [
+      "No changes in the app itself: this release fixes a test that sometimes failed during the build.",
+    ],
+  },
+  {
     version: "0.1.6",
     fixes: [
       "Rivens now use disposition 1.2 for every weapon, matching the game's change, so their numbers are right again.",
