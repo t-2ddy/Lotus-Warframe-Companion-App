@@ -259,9 +259,13 @@ mod tests {
     }
 
     fn cache(answers: Vec<Fetched>) -> (ImageCache, Arc<AtomicUsize>, PathBuf) {
+        // A counter, not just the time: tests run in parallel and can read the same clock tick,
+        // then one test's cleanup deletes the other's folder mid-test (seen on CI).
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "wf-img-test-{}-{}",
+            "wf-img-test-{}-{}-{}",
             std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst),
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         let calls = Arc::new(AtomicUsize::new(0));
