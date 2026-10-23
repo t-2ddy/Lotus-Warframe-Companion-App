@@ -7,6 +7,12 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.6",
+    fixes: [
+      "Rivens now use disposition 1.2 for every weapon, matching the game's change, so their numbers are right again.",
+    ],
+  },
+  {
     version: "0.1.5",
     fixes: [
       "Foundry and the relic overlay now count a part you hold as a blueprint as owned.",

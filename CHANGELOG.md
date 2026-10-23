@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-10-23
+
 ### Changed
 - Rivens: every riven now uses disposition 1.2 (4/5 dots), matching the game, where DE set all
   weapons to the same disposition. This applies to the Rivens page, the popup and the riven
@@ -189,7 +191,9 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.1...v0.1.2
