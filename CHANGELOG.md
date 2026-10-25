@@ -5,6 +5,15 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Added
+- Mastery Helper → Crafting trees: a card for every item built from other weapons (Akjagara,
+  Hystrix, Twin Vipers, Lesion…) with its XP, level, parts and how much of its tree you've
+  mastered (mastered ones carry the mastered wreath); unmastered ones first, with Favorites and
+  Hide mastered filters (remembered). Click a card for its crafting tree: a build diagram of item
+  tiles where an item's ingredients meet in one bracket before it (×2 for dual weapons). Each
+  tile shows the mastered wreath after the name, or its rank with a rank bar, or Not owned.
+  Hover a weapon to keep its chain lit; click it for its recipe and where to get it.
+
 ## [0.1.9] — 2026-10-25
 
 ### Added

@@ -155,6 +155,70 @@ pub struct MasteryData {
     pub easy: Vec<Suggestion>,
     pub relics: Vec<Suggestion>,
     pub platinum: Vec<Suggestion>,
+    /// Crafting trees: one card per item built from other masterable items, the ones still to
+    /// master first (most XP first), then the mastered ones.
+    pub crafted: Vec<Suggestion>,
+    pub trees: CraftWeb,
+}
+
+/// Items built from other masterable items (Akjagara from Akbolto and Dual Skana, Akbolto from two
+/// Boltos, Bolto from a Lato), as one web: a weapon used in several builds appears once.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CraftWeb {
+    pub nodes: Vec<WebNode>,
+    pub links: Vec<WebLink>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebNode {
+    pub path: String,
+    pub name: String,
+    pub image: Option<String>,
+    pub mastered: bool,
+    pub owned: i64,
+    pub rank: u32,
+    pub max_rank: u32,
+}
+
+/// `from` is built into `to`, `count` of it per build.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebLink {
+    pub from: String,
+    pub to: String,
+    pub count: u32,
+}
+
+/// The crafting web from the Foundry list: every item with another masterable item among its
+/// parts, and those parts, by name.
+fn craft_web(items: &[FoundryItem]) -> CraftWeb {
+    let by_path: HashMap<&str, &FoundryItem> = items.iter().map(|i| (i.path.as_str(), i)).collect();
+    let links: Vec<WebLink> = items
+        .iter()
+        .flat_map(|i| {
+            i.parts
+                .iter()
+                .filter(|p| by_path.contains_key(p.path.as_str()))
+                .map(|p| WebLink { from: p.path.clone(), to: i.path.clone(), count: p.needed })
+        })
+        .collect();
+    let used: HashSet<&str> = links.iter().flat_map(|l| [l.from.as_str(), l.to.as_str()]).collect();
+    let nodes = items
+        .iter()
+        .filter(|i| used.contains(i.path.as_str()))
+        .map(|i| WebNode {
+            path: i.path.clone(),
+            name: i.name.clone(),
+            image: i.image.clone(),
+            mastered: i.mastered,
+            owned: i.owned,
+            rank: i.rank,
+            max_rank: i.max_rank,
+        })
+        .collect();
+    CraftWeb { nodes, links }
 }
 
 fn has(current: &Flat, section: &str, item: &str) -> i64 {
@@ -422,6 +486,17 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
         })
         .collect();
 
+    // Crafting trees: items with another masterable item among their parts.
+    let mut crafted: Vec<Suggestion> = items
+        .iter()
+        .filter(|i| i.parts.iter().any(|p| curves.contains_key(p.path.as_str())))
+        .map(suggestion)
+        .collect();
+    crafted.sort_by(|a, b| {
+        let done = |s: &Suggestion| s.xp_gain == 0;
+        done(a).cmp(&done(b)).then(b.xp_gain.cmp(&a.xp_gain)).then_with(|| a.name.cmp(&b.name))
+    });
+
     MasteryData {
         has_data: !current.is_empty(),
         rank,
@@ -436,6 +511,8 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
         easy,
         relics,
         platinum,
+        crafted,
+        trees: craft_web(&items),
     }
 }
 
@@ -599,6 +676,32 @@ mod tests {
         assert!(frost.building && !frost.owned);
         assert!(!d.relics.iter().any(|s| s.name == "Frost Prime"), "not something to farm");
         assert!(!d.platinum.iter().any(|s| s.name == "Frost Prime"), "not something to buy");
+    }
+
+    #[test]
+    fn crafting_web_links_items_built_from_items() {
+        let secondary = br#"[
+            {"uniqueName":"/W/Lato","name":"Lato","masterable":true},
+            {"uniqueName":"/W/Bolto","name":"Bolto","masterable":true,"components":[{"uniqueName":"/W/Lato"},{"uniqueName":"/W/BoltoBP"}]},
+            {"uniqueName":"/W/Akbolto","name":"Akbolto","masterable":true,"components":[{"uniqueName":"/W/Bolto"},{"uniqueName":"/W/Bolto"}]},
+            {"uniqueName":"/W/Vasto","name":"Vasto","masterable":true}]"#;
+        let index = ItemIndex::build(&[("Secondary".into(), secondary.to_vec())]);
+        let raw = r#"{"XPInfo":[{"ItemType":"/W/Lato","XP":450000}],"Pistols":[{"ItemType":"/W/Bolto","XP":10}]}"#;
+        let current = parse(raw.as_bytes()).unwrap().values;
+        let web = build(&index, &NodeData::default(), &current, &HashSet::new()).trees;
+        let mut names: Vec<&str> = web.nodes.iter().map(|n| n.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["Akbolto", "Bolto", "Lato"], "Vasto isn't part of any build");
+        assert!(web.links.contains(&WebLink { from: "/W/Bolto".into(), to: "/W/Akbolto".into(), count: 2 }));
+        assert!(web.links.contains(&WebLink { from: "/W/Lato".into(), to: "/W/Bolto".into(), count: 1 }));
+        let lato = web.nodes.iter().find(|n| n.name == "Lato").unwrap();
+        let bolto = web.nodes.iter().find(|n| n.name == "Bolto").unwrap();
+        assert!(lato.mastered && !bolto.mastered && bolto.owned == 1);
+
+        let data = build(&index, &NodeData::default(), &current, &HashSet::new());
+        let cards: Vec<(&str, i64)> = data.crafted.iter().map(|s| (s.name.as_str(), s.xp_gain)).collect();
+        assert_eq!(cards, [("Akbolto", 3000), ("Bolto", 3000)], "one card per item built from items");
+        assert_eq!(data.crafted[0].parts[0].needed, 2);
     }
 
     /// Easy also lists sets you hold every part of: ready to build (resources there too) after the

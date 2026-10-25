@@ -3,6 +3,9 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { compact, hideOnError, imageUrl, markMissing } from "$lib/format";
+  import CraftConstellation, { type CraftWeb } from "$lib/CraftConstellation.svelte";
+  import ItemDetail from "$lib/ItemDetail.svelte";
+  import Check from "@lucide/svelte/icons/check";
 
   type Part = { path: string; name: string; image: string | null; overlay: string | null; needed: number; owned: number };
   type Progress = { label: string; done: number; total: number };
@@ -55,6 +58,8 @@
     easy: Suggestion[];
     relics: Suggestion[];
     platinum: Suggestion[];
+    crafted: Suggestion[];
+    trees: CraftWeb;
   };
   type PriceView = {
     path: string;
@@ -64,12 +69,54 @@
     status: "fresh" | "stale" | "loading" | "untradable";
   };
 
-  type Mode = "easy" | "relics" | "platinum";
+  type Mode = "easy" | "relics" | "platinum" | "trees";
   const MODES: { id: Mode; label: string }[] = [
     { id: "easy", label: "Easy" },
     { id: "relics", label: "From relics" },
     { id: "platinum", label: "With platinum" },
+    { id: "trees", label: "Crafting trees" },
   ];
+  /** Crafting trees: the card whose tree is open, and the weapon whose recipe popup is open over it. */
+  let treeFocus = $state<Suggestion | null>(null);
+
+  /** Crafting trees filters, remembered between visits. */
+  const TREE_FILTERS_KEY = "mastery.treeFilters";
+  function loadTreeFilters(): { favorites: boolean; hideMastered: boolean } {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TREE_FILTERS_KEY) ?? "{}");
+      return { favorites: saved.favorites === true, hideMastered: saved.hideMastered === true };
+    } catch {
+      return { favorites: false, hideMastered: false };
+    }
+  }
+  let treeFilters = $state(loadTreeFilters());
+  function toggleTreeFilter(key: "favorites" | "hideMastered") {
+    treeFilters[key] = !treeFilters[key];
+    try {
+      localStorage.setItem(TREE_FILTERS_KEY, JSON.stringify(treeFilters));
+    } catch {}
+  }
+  let treeItem = $state<string | null>(null);
+
+  /** Weapons mastered in an item's crafting tree (itself, what goes into it, what it goes into). */
+  function treeProgress(path: string) {
+    const web = data?.trees;
+    if (!web) return { done: 0, total: 0 };
+    const set = new Set([path]);
+    const walk = (p: string, up: boolean) => {
+      for (const l of web.links) {
+        const [here, next] = up ? [l.to, l.from] : [l.from, l.to];
+        if (here === p && !set.has(next)) {
+          set.add(next);
+          walk(next, up);
+        }
+      }
+    };
+    walk(path, true);
+    walk(path, false);
+    const nodes = web.nodes.filter((n) => set.has(n.path));
+    return { done: nodes.filter((n) => n.mastered).length, total: nodes.length };
+  }
 
   let data = $state<MasteryData | null>(null);
   let mode = $state<Mode>("easy");
@@ -185,8 +232,20 @@
   const partCount = $derived(new Set((data?.platinum ?? []).flatMap((s) => s.buy.map((b) => b.path))).size);
   const platinumTotal = $derived(priced.reduce((a, x) => a + (x.cost ?? 0), 0));
 
+  const craftedShown = $derived(
+    (data?.crafted ?? []).filter(
+      (s) => (!treeFilters.favorites || s.favorite) && (!treeFilters.hideMastered || s.xpGain > 0),
+    ),
+  );
+
   const list = $derived(
-    mode === "easy" ? (data?.easy ?? []) : mode === "relics" ? (data?.relics ?? []) : priced.map((x) => x.s),
+    mode === "easy"
+      ? (data?.easy ?? [])
+      : mode === "relics"
+        ? (data?.relics ?? [])
+        : mode === "trees"
+          ? craftedShown
+          : priced.map((x) => x.s),
   );
 
   /** The "From relics" or "With platinum" card whose popup is open, and which tab opened it. */
@@ -211,7 +270,8 @@
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      openDetail(s);
+      if (mode === "trees") treeFocus = s;
+      else openDetail(s);
     }
   }
 
@@ -240,7 +300,14 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && detail && (detail = null)} />
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key !== "Escape") return;
+    if (detail) detail = null;
+    // The recipe popup over a tree closes first (it handles its own Escape).
+    else if (treeFocus && !treeItem) treeFocus = null;
+  }}
+/>
 
 {#snippet platinum()}
   <img class="plat-icon" src="/icons/platinum.png" alt="platinum" />
@@ -373,6 +440,21 @@
       <p class="muted note">
         Prime sets closest to being built, where every missing part drops from a relic you own. Fewest missing parts first.
       </p>
+    {:else if mode === "trees"}
+      <div class="tree-bar">
+        <p class="muted note">
+          Items built from other weapons. Click one for its crafting tree. Building uses those weapons up, so master them first.
+        </p>
+        <div class="toggles" role="group" aria-label="Filters">
+          {#each [["favorites", "Favorites"], ["hideMastered", "Hide mastered"]] as const as [key, label]}
+            <button class="toggle" class:on={treeFilters[key]} aria-pressed={treeFilters[key]} onclick={() => toggleTreeFilter(key)}>
+              <span class="tick" aria-hidden="true">{#if treeFilters[key]}<Check size={14} strokeWidth={2.5} />{/if}</span>
+              {label}
+            </button>
+          {/each}
+          <span class="muted shown">{craftedShown.length} of {data.crafted.length}</span>
+        </div>
+      </div>
     {:else}
       <p class="muted note">
         Items that aren't mastered yet: ones you own or are building, then sets ready to build, then full sets where you
@@ -392,10 +474,12 @@
           tabindex={opens ? 0 : undefined}
           aria-label={mode === "relics"
             ? `${s.name}: relics and prices for the missing parts`
-            : opens
-              ? `${s.name}: set and part prices`
-              : undefined}
-          onclick={opens ? () => openDetail(s) : undefined}
+            : mode === "trees"
+              ? `${s.name}: crafting tree`
+              : opens
+                ? `${s.name}: set and part prices`
+                : undefined}
+          onclick={opens ? () => (mode === "trees" ? (treeFocus = s) : openDetail(s)) : undefined}
           onkeydown={opens ? (e) => onCardKey(e, s) : undefined}
           onpointerenter={() => (hovered = s)}
           onpointerleave={() => hovered === s && (hovered = null)}
@@ -425,6 +509,9 @@
                 </svg>
               </button>
               <h3 title={s.name}>{s.name}</h3>
+              {#if s.xpGain === 0}
+                <img class="mastered-icon" src="/icons/mastered.png" alt="Mastered" title="Mastered" />
+              {/if}
             </div>
 
             {#if mode === "easy"}
@@ -455,6 +542,15 @@
               {#if s.relicSources.length}
                 <div class="sources" title={s.relicSources.join(", ")}>From: {s.relicSources.join(" · ")}</div>
               {/if}
+            {:else if mode === "trees"}
+              {@const t = treeProgress(s.path)}
+              <div class="detail">
+                <span>Level <b>{s.rank}</b>/{s.maxRank}</span>
+                {#if s.xpGain === 0}<span class="chip owned">Mastered</span>{:else if s.owned}<span class="chip owned">Inventory</span>{/if}
+              </div>
+              <div class="sources" title="Weapons mastered in its crafting tree: itself, what goes into it and what it goes into">
+                {t.done}/{t.total} mastered in its tree
+              </div>
             {:else}
               <div class="detail">
                 <span class="price">
@@ -487,6 +583,33 @@
         <p class="muted">Nothing here right now.</p>
       {/each}
     </div>
+
+    {#if treeFocus}
+      {@const f = treeFocus}
+      <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+      <div class="backdrop" onclick={(e) => e.target === e.currentTarget && (treeFocus = null)}>
+        <div class="dialog tree-dialog" role="dialog" aria-modal="true" aria-labelledby="tree-title">
+          <header class="dialog-head">
+            {#if f.image}<img class="dialog-pic" src={imageUrl(f.image)} alt="" onerror={markMissing} />{/if}
+            <div>
+              <h2 id="tree-title">{f.name}</h2>
+              <p class="muted">
+                Crafting tree{#if f.xpGain > 0} · +{f.xpGain.toLocaleString()} XP to master{:else} · mastered{/if}
+              </p>
+            </div>
+            <!-- svelte-ignore a11y_autofocus -->
+            <button class="close" onclick={() => (treeFocus = null)} aria-label="Close" autofocus>
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" /></svg>
+            </button>
+          </header>
+          <CraftConstellation web={data.trees} focus={f.path} onopen={(path) => (treeItem = path)} />
+        </div>
+      </div>
+    {/if}
+
+    {#if treeItem}
+      <ItemDetail path={treeItem} onclose={() => (treeItem = null)} />
+    {/if}
 
     {#if detail}
       {@const d = detail}
@@ -964,6 +1087,63 @@
     font-size: 13px;
   }
 
+  /* Crafting trees: the note, then its filter toggles on the right. */
+  .tree-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0 16px;
+  }
+
+  .toggles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0 14px;
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 12px 5px 8px;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+
+  .toggle:hover {
+    border-color: var(--line-strong);
+  }
+
+  .toggle.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .tick {
+    display: inline-grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+  }
+
+  .shown {
+    margin-left: 6px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* Always at least 2 per row (a window a third of the screen wide still shows two); 380px
      columns once there's room. */
   .cards {
@@ -1019,19 +1199,29 @@
     gap: 8px;
   }
 
+  /* The title size sits on the row, so the name and the mastered icon scale together. */
   .name-row {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
+    font-size: 18px;
   }
 
   .name-row h3 {
     margin: 0;
-    font-size: 18px;
+    font-size: 1em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* The mastered wreath after the name, 1.5× the name as on Foundry cards. */
+  .mastered-icon {
+    flex: none;
+    width: 1.5em;
+    height: 1.5em;
+    object-fit: contain;
   }
 
   .star {
@@ -1070,7 +1260,7 @@
       margin: 0 auto;
     }
 
-    .name-row h3 {
+    .name-row {
       font-size: 16px;
     }
 
@@ -1167,6 +1357,13 @@
     padding: 18px 20px;
     box-shadow: var(--shadow);
     animation: dialog-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  /* The crafting tree: as wide as its constellation needs, centred. */
+  .tree-dialog {
+    width: auto;
+    min-width: min(520px, 100%);
+    max-width: min(1100px, 100%);
   }
 
   @keyframes dialog-in {
