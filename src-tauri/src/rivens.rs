@@ -94,7 +94,19 @@ impl RivenData {
             data.flatten_dispositions();
         }
         data.fill_factions();
+        data.fix_signs();
         Ok(data)
+    }
+
+    /// DE's export gives Ammo Efficiency a negative value, but the game shows the good roll as a
+    /// gain ("+55.5% Ammo Efficiency") and the bad one as a loss. Stored the other way, the good
+    /// roll came out as "-55.5%" and a card's "+55.5%" read as a negative.
+    fn fix_signs(&mut self) {
+        for t in self.types.values_mut() {
+            if let Some(s) = t.stats.get_mut("WeaponAmmoEfficiency") {
+                s.value = s.value.abs();
+            }
+        }
     }
 
     /// Every weapon at [`DISPOSITION`], whatever the data lists.
@@ -920,6 +932,26 @@ mod tests {
         let v = view(&d, &GradeSheet::default(), &odd, MAX_RANK).unwrap();
         assert!(v.grade_pending && v.grade.is_none());
         assert_eq!(trait_name("WeaponFactionDamageInfested"), "Damage to Infested");
+    }
+
+    #[test]
+    fn ammo_efficiency_gain_is_the_good_roll() {
+        let d = data();
+        let riven = |buffs: &str, curses: &str| OwnedRiven {
+            id: "a".into(),
+            item_type: "/Lotus/Upgrades/Mods/Randomized/LotusRifleRandomModRare".into(),
+            fingerprint: format!(
+                r#"{{"compat":"/Lotus/Weapons/Tenno/Rifle/SemiAutoRifle","lvl":8,"buffs":[{buffs}],"curses":[{curses}]}}"#
+            ),
+        };
+        let ae = r#"{"Tag":"WeaponAmmoEfficiency","Value":1073741823}"#;
+        let cd = r#"{"Tag":"WeaponCritDamageMod","Value":1073741823}"#;
+        let v = view(&d, &GradeSheet::default(), &riven(&format!("{cd},{ae}"), ""), MAX_RANK).unwrap();
+        let s = v.stats.iter().find(|s| s.tag == "WeaponAmmoEfficiency").unwrap();
+        assert!(s.good && s.text.starts_with('+') && s.text.ends_with("% Ammo Efficiency"), "{}", s.text);
+        let v = view(&d, &GradeSheet::default(), &riven(cd, ae), MAX_RANK).unwrap();
+        let s = v.stats.iter().find(|s| s.tag == "WeaponAmmoEfficiency").unwrap();
+        assert!(!s.good && s.text.starts_with('-'), "{}", s.text);
     }
 
     #[test]

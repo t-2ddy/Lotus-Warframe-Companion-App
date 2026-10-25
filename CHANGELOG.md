@@ -5,6 +5,11 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Fixed
+- Riven Ammo Efficiency had its sign backwards (DE's data stores it negative): a "+55.5% Ammo
+  Efficiency" positive showed as "-55.5%" on owned rivens, and the overlay read it off cards as
+  a negative. A gain is now the positive and a loss the negative, as in game.
+
 ## [0.1.12] — 2026-10-25
 
 ### Changed
