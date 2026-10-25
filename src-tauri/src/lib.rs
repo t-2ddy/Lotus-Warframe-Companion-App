@@ -31,6 +31,17 @@ use images::{ImageService, Served};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // One Lotus at a time: a second copy would draw its own overlays and, without the live
+        // game log (only one listener gets it), read the screen seconds late from EE.log.
+        // Launching again brings the running window forward instead. Registered first, so the
+        // second copy exits before starting anything.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         // App updates from GitHub Releases (signed; see tauri.conf.json → plugins.updater).
         .plugin(tauri_plugin_updater::Builder::new().build())

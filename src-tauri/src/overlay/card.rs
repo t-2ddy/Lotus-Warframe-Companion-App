@@ -183,6 +183,7 @@ pub fn consensus(reads: &[Card]) -> Option<Card> {
     let counts = |c: &Card| !title_agreed || norm(&c.title) == title_key;
     let count = vote(reads.iter().filter(|c| counts(c)).map(|c| c.stats.len()))?;
     let agreeing: Vec<&Card> = reads.iter().filter(|c| counts(c) && c.stats.len() == count).collect();
+    let data = rivens::data();
     let stats: Vec<CardStat> = (0..count)
         .map(|i| {
             // Number and unit together, to a tenth (the precision cards show). A number some
@@ -192,8 +193,12 @@ pub fn consensus(reads: &[Card]) -> Option<Card> {
                 || (f64::NAN, agreeing.first().map_or(Unit::Plain, |c| c.stats[i].unit)),
                 |(v, u)| (v as f64 / 100.0, u),
             );
-            // A label hidden by its icon reads as nothing in some copies: any read beats none.
-            let label = vote(agreeing.iter().map(|c| c.stats[i].label.clone()).filter(|l| !l.is_empty())).unwrap_or_default();
+            // A label hidden by its icon reads as nothing in some copies: any read beats none,
+            // and one some riven type knows beats junk ("ecas" vs "gas", 2026-10-24: a tie
+            // went to the junk read first).
+            let labels: Vec<String> = agreeing.iter().map(|c| c.stats[i].label.clone()).filter(|l| !l.is_empty()).collect();
+            let known: Vec<String> = labels.iter().filter(|l| known_label(&data, l)).cloned().collect();
+            let label = vote(if known.is_empty() { labels } else { known }).unwrap_or_default();
             CardStat { value, unit, label }
         })
         .collect();
@@ -413,25 +418,37 @@ fn label_key(label: &str) -> String {
 }
 
 /// Every label a card can show for this riven type, as (tag, letters): the type's stats, spliced
-/// elements (`viral`, `viraldamage`) and the not-yet-graded spliced traits (`statusdamage`,
-/// `damagetoorokin` / `damagevsorokin`).
+/// elements (`viral`, `viraldamage`) and the other spliced traits as cards word them
+/// (`statusdamage`, `damagetoorokin` / `damagevsorokin`). A spliced one maps to the type's own
+/// stat when its data has it (DE's export), else to a stand-in tag.
 fn label_keys(kind: &RivenType) -> Vec<(String, String)> {
     let mut keys: Vec<(String, String)> =
         kind.stats.iter().map(|(tag, s)| (tag.clone(), label_key(&s.label))).filter(|(_, k)| !k.is_empty()).collect();
-    if kind.stats.contains_key("WeaponFireDamageMod") {
-        for e in rivens::SPLICED_ELEMENTS {
-            keys.push((format!("Spliced{e}"), norm(e)));
-            keys.push((format!("Spliced{e}"), norm(&format!("{e} Damage"))));
-        }
+    for e in rivens::SPLICED_ELEMENTS {
+        let own = format!("Weapon{e}DamageMod");
+        let tag = if kind.stats.contains_key(&own) {
+            own
+        } else if kind.stats.contains_key("WeaponFireDamageMod") {
+            format!("Spliced{e}")
+        } else {
+            continue;
+        };
+        keys.push((tag.clone(), norm(e)));
+        keys.push((tag, norm(&format!("{e} Damage"))));
     }
-    for name in rivens::SPLICED_PENDING {
-        let tag = format!("{}{name}", rivens::PENDING_PREFIX);
+    for (name, own) in rivens::SPLICED_TRAITS {
+        let tag = if kind.stats.contains_key(*own) { own.to_string() } else { format!("{}{name}", rivens::PENDING_PREFIX) };
         keys.push((tag.clone(), norm(name)));
         if name.contains(" to ") {
             keys.push((tag, norm(&name.replace(" to ", " vs "))));
         }
     }
     keys
+}
+
+/// Whether any riven type reads this OCR'd label as one of its stats.
+fn known_label(data: &RivenData, ocr: &str) -> bool {
+    data.types.values().any(|kind| match_label(kind, ocr).is_some())
 }
 
 /// The stat tag for an OCR'd label. Tries, in order: the exact label; a label with junk before
@@ -464,14 +481,15 @@ pub fn match_label(kind: &RivenType, ocr: &str) -> Option<String> {
         return Some(tag.clone());
     }
     // Misread letters ("Mulitshot", "Critica1 Damage"): a label a letter away (two for long
-    // ones), allowing for icon junk before it, if only one stat is that close.
+    // ones), allowing for icon junk before it ("ecas" is Gas), if only one stat is that close.
+    // Skipping junk doesn't use up the allowance but ranks behind a read without it.
     let close = |k: &str| {
         let allowed = if k.len() >= 8 { 2 } else { 1 };
         let ocr: Vec<char> = ocr.chars().collect();
-        (0..=3.min(ocr.len().saturating_sub(4)))
-            .map(|skip| edit_distance(&ocr[skip..], &k.chars().collect::<Vec<_>>()) + skip.min(1))
+        let k: Vec<char> = k.chars().collect();
+        (0..=3.min(ocr.len().saturating_sub(3)))
+            .filter_map(|skip| Some(edit_distance(&ocr[skip..], &k)).filter(|d| *d <= allowed).map(|d| d + skip.min(1)))
             .min()
-            .filter(|d| *d <= allowed)
     };
     let mut near: Vec<(usize, &String)> = keys.iter().filter_map(|(t, k)| close(k).map(|d| (d, t))).collect();
     near.sort();
@@ -508,11 +526,17 @@ fn legacy_tag(data: &RivenData, kind: &RivenType, label: &str) -> Option<String>
 
 /// Stat tags spelled out by a riven's name: prefixes start each `-` part, the suffix ends it
 /// (`Acri-hexasus` → Critical Damage, Status Chance, Slash).
+///
+/// Each part names one stat. Several can share a part: the spliced traits reuse older stats'
+/// ("laci"/"nus" is Additional Combo Count Chance and four melee traits; "parci"/"pia" two gun
+/// traits). The older stat is taken, then the longer part, so the count of positives stays right.
 pub fn name_tags(kind: &RivenType, riven_name: &str) -> Vec<String> {
     let lower = riven_name.to_lowercase();
     let parts: Vec<&str> = lower.split('-').collect();
     let last = parts.last().copied().unwrap_or_default();
-    let mut tags: Vec<(usize, String)> = Vec::new();
+    // (where in the name, spliced, longer part first, tag)
+    let mut tags: Vec<(usize, bool, std::cmp::Reverse<usize>, String)> = Vec::new();
+    let found = |at: usize, part: &str, tag: &String| (at, rivens::spliced_trait(tag), std::cmp::Reverse(part.len()), tag.clone());
     // Only one suffix ends the name: the longest that fits, so "loctisus" is Slash ("sus"), not
     // Heavy Attack Efficiency ("us").
     let suffix_len = kind
@@ -528,17 +552,24 @@ pub fn name_tags(kind: &RivenType, riven_name: &str) -> Vec<String> {
         if !p.is_empty() {
             if let Some(i) = parts.iter().position(|part| part.starts_with(&p) && part.len() >= p.len()) {
                 // A prefix can't also be the whole last part (that's prefix + suffix).
-                tags.push((i, tag.clone()));
+                tags.push(found(i, &p, tag));
                 continue;
             }
         }
         if !sfx.is_empty() && last.ends_with(&sfx) && last.len() > sfx.len() && Some(sfx.len()) == suffix_len {
-            tags.push((usize::MAX, tag.clone()));
+            tags.push(found(usize::MAX, &sfx, tag));
         }
     }
     tags.sort();
-    tags.dedup_by(|a, b| a.1 == b.1);
-    tags.into_iter().map(|(_, t)| t).collect()
+    // One stat per part: the best one sorts first.
+    tags.dedup_by(|a, b| a.0 == b.0);
+    let mut out: Vec<String> = Vec::new();
+    for (_, _, _, t) in tags {
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
 }
 
 /// A riven worked out from a card: either the user's own (exact) or rebuilt from the numbers.
@@ -1331,11 +1362,14 @@ mod tests {
 
     #[test]
     fn new_spliced_traits_dont_stop_the_rest() {
-        // overlay.log 2026-10-09: "Slam Attack Damage" was read as Damage, so nothing fit.
+        // overlay.log 2026-10-09: "Slam Attack Damage" was read as Damage, so nothing fit. DE's
+        // export has it now (October 2026), so it's graded too; a trait the type can't roll
+        // still waits.
         let d = rivens::data();
         let d = &*d;
         let melee = &d.types["PlayerMeleeWeaponRandomModRare"];
-        assert_eq!(match_label(melee, "slamattackdamage").as_deref(), Some("Pending:Slam Attack Damage"));
+        assert_eq!(match_label(melee, "slamattackdamage").as_deref(), Some("WeaponMeleeSlamDamageMod"));
+        assert_eq!(match_label(melee, "slamdamage").as_deref(), Some("WeaponMeleeSlamDamageMod"), "the wiki's wording");
         assert_eq!(match_label(melee, "reloadwhileholstered").as_deref(), Some("Pending:Reload While Holstered"));
         let card = parse_card(&lines(
             "Magistar Crita- / acrinus / +114.4% Critical Damage / +139.9% Slam Attack Damage / +235.3% Critical Chance / (x2 for Heavy Attacks) / -91.3% Status Duration / MR 9",
@@ -1343,9 +1377,8 @@ mod tests {
         .unwrap();
         let magistar = Some("/Lotus/Weapons/Tenno/Melee/Maces/PaladinMace/PaladinMaceWeapon");
         let r = rebuild(d, &GradeSheet::default(), "PlayerMeleeWeaponRandomModRare", &card, magistar, None).unwrap();
-        let pending: Vec<&str> = r.view.stats.iter().filter(|s| s.pending).map(|s| s.text.as_str()).collect();
-        assert_eq!(pending, ["+139.9% Slam Attack Damage"]);
-        assert_eq!(r.view.stats.iter().filter(|s| !s.pending).count(), 3);
+        assert!(r.view.stats.iter().all(|s| !s.pending && s.letter != "?"), "{:?}", r.view.stats);
+        assert_eq!(r.view.stats[1].text, "+139.9% Slam Attack Damage");
     }
 
     #[test]
@@ -1420,6 +1453,11 @@ mod tests {
         assert!(tags.contains(&"WeaponCritDamageMod".to_string()));
         assert!(tags.contains(&"WeaponStunChanceMod".to_string()));
         assert!(tags.contains(&"WeaponSlashDamageMod".to_string()), "{tags:?}");
+        // Reroll screen, 2026-10-24: the new Boar roll read mid-fade as "Boar crt".
+        // Viral ("cari") isn't in the data, so these spell out two of their three buffs.
+        assert!(name_tags(rifle, "Croni-cariada").len() >= 2);
+        assert!(name_tags(rifle, "Feva-carilis").len() >= 2);
+        assert!(name_tags(rifle, "crt").len() < 2, "a cut-off name spells out under two buffs");
     }
 
     #[test]
@@ -1479,19 +1517,21 @@ mod spliced_tests {
     }
 
     #[test]
-    fn other_spliced_traits_wait_for_data() {
-        // Status Damage must not be read as Damage; the other stats still get letters.
+    fn other_spliced_traits_are_graded_from_des_export() {
+        // Status Damage must not be read as Damage. With its range from DE's export (October
+        // 2026) it gets a letter like the rest.
         let d = rivens::data();
         let d = &*d;
         let rifle = &d.types["LotusRifleRandomModRare"];
-        assert_eq!(match_label(rifle, "statusdamage").as_deref(), Some("Pending:Status Damage"));
-        assert_eq!(match_label(rifle, "damagevsorokin").as_deref(), Some("Pending:Damage to Orokin"));
+        assert_eq!(match_label(rifle, "statusdamage").as_deref(), Some("WeaponStatusDamage"));
+        assert_eq!(match_label(rifle, "damagevsorokin").as_deref(), Some("WeaponFactionDamageOrokin"));
+        assert_eq!(match_label(rifle, "weakpointdamage").as_deref(), Some("WeaponWeakpointDamage"), "\"Weakpoint\" as the wiki spells it");
         let c = card("Verglas Plaga-critatis / +134.1% Critical Damage / +185.1% Critical Chance / +1 19.3% Status Damage / -46.7% Reload Speed");
         let r = rebuild(d, &GradeSheet::default(), "LotusRifleRandomModRare", &c, None, None).unwrap();
         let texts: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
         assert_eq!(texts, ["+134.1% Critical Damage", "+185.1% Critical Chance", "+119.3% Status Damage", "-46.7% Reload Speed"]);
-        assert!(r.view.stats[2].pending && r.view.stats[2].good);
-        assert!(r.view.stats.iter().filter(|s| !s.pending).all(|s| s.letter != "?"));
+        assert!(!r.view.stats[2].pending && r.view.stats[2].good);
+        assert!(r.view.stats.iter().all(|s| s.letter != "?"), "{:?}", r.view.stats);
     }
 }
 
@@ -1589,8 +1629,13 @@ mod slash_icon_tests {
         assert_eq!(tag("criticadamage").as_deref(), Some("WeaponCritDamageMod"), "\"Critica1 Damage\"");
         assert_eq!(tag("criticaldarnage").as_deref(), Some("WeaponCritDamageMod"), "rn for m");
         assert_eq!(tag("vmultishot").as_deref(), Some("WeaponFireIterationsMod"), "icon junk");
+        // The spliced Gas line (2026-10-24): icon junk plus a misread letter, or just the letter.
+        let shotgun = &d.types["LotusShotgunRandomModRare"];
+        assert_eq!(match_label(shotgun, "ecas").as_deref(), Some("WeaponGasDamageMod"));
+        assert_eq!(match_label(shotgun, "eas").as_deref(), Some("WeaponGasDamageMod"));
+        assert_eq!(match_label(shotgun, "egas").as_deref(), Some("WeaponGasDamageMod"));
         // Real traits stay themselves, and something new isn't forced onto a stat.
-        assert_eq!(tag("statusdamage").as_deref(), Some("Pending:Status Damage"));
+        assert_eq!(tag("statusdamage").as_deref(), Some("WeaponStatusDamage"));
         assert_eq!(tag("statuschance").as_deref(), Some("WeaponStunChanceMod"));
         assert_eq!(tag("brandnewthing"), None);
     }
@@ -1618,12 +1663,37 @@ mod slash_icon_tests {
             .collect();
         assert_eq!(consensus(&slash).unwrap().stats[0].label, "qslash");
         assert!(consensus(&[]).is_none());
+        // overlay.log 2026-10-24: the Gas label read as nothing twice, "ecas" once, "Gas" once.
+        let gas: Vec<Card> = [
+            "Sobek Sati-decifel / +146.8% Multishot / +102.1% / +120% Status Duration / -36.3% Zoom / MR 16 / 078",
+            "Sobek Sati-decifel / +146.8% Multishot / +102.1% / +120% Status Duration / -36.3% Zoom / MR16 / 078",
+            "Sobek Sati-decifel / +146.8% Multishot / +102.10/0 ecas / +120% Status Duration / -36.3% Zoom / MR16 / 078",
+            "Sobek Sati-decifel / +146.8% Multishot / +102.1% •Gas / +120% Status Duration / -36.3% Zoom / 078 , / MR16",
+        ]
+        .iter()
+        .filter_map(|t| parse_card(&t.split(" / ").map(String::from).collect::<Vec<_>>()))
+        .collect();
+        // Captured after every weapon went to disposition 1.2 (Kuva Sobek was 0.8).
+        let data = rivens::bundled_flat();
+        let shotgun = &data.types["LotusShotgunRandomModRare"];
+        let card = consensus(&gas).unwrap();
+        assert_eq!(match_label(shotgun, &card.stats[1].label).as_deref(), Some("WeaponGasDamageMod"));
+        let sobek = Some("/Lotus/Weapons/Grineer/KuvaLich/LongGuns/Sobek/KuvaSobek");
+        let r = rebuild(&data, &GradeSheet::default(), "LotusShotgunRandomModRare", &card, sobek, None);
+        assert!(r.is_ok(), "the card works out: {:?}", r.err());
+        // Junk no riven type knows loses to a label one does, whatever the order.
+        let junk: Vec<Card> = ["Sobek Sati-decifel / +102.1% qzx / +120% Status Duration", "Sobek Sati-decifel / +102.1% •Gas / +120% Status Duration"]
+            .iter()
+            .filter_map(|t| parse_card(&t.split(" / ").map(String::from).collect::<Vec<_>>()))
+            .collect();
+        assert_eq!(consensus(&junk).unwrap().stats[0].label, "gas");
     }
 
     #[test]
-    fn removed_stats_are_shown_as_no_longer_rolling() {
-        // riven_misfits.jsonl 2026-10-10: shotgun rivens can't roll Zoom any more, but this
-        // Sobek riven has it ("stat not recognised: zoom").
+    fn shotgun_zoom_and_unknown_labels() {
+        // riven_misfits.jsonl 2026-10-10: this Sobek riven has Zoom, which shotgun rivens didn't
+        // roll in the data then ("stat not recognised: zoom"). DE's export has it again
+        // (October 2026): graded like the rest.
         let d = rivens::data();
         let d = &*d;
         let c = card("Sobek Acri-satitox / +6.9% z Toxin / +7.8% Critical Damage / +9.6% Multishot / -2.6% Zoom / MR 16 / 056 \\");
@@ -1631,16 +1701,16 @@ mod slash_icon_tests {
         let r = rebuild(d, &GradeSheet::default(), "LotusShotgunRandomModRare", &c, kuva, None).unwrap();
         let zoom = &r.view.stats[3];
         assert_eq!((zoom.tag.as_str(), zoom.text.as_str(), zoom.good), ("WeaponZoomFovMod", "-2.6% Zoom", false));
-        assert!(zoom.legacy && zoom.pending && zoom.letter == "?");
-        assert!(r.view.stats[..3].iter().all(|s| !s.pending && s.letter != "?"), "{:?}", r.view.stats);
-        assert!(!r.view.grade_pending, "a removed stat doesn't stop the grade");
+        assert!(!zoom.legacy && !zoom.pending && zoom.letter != "?", "{zoom:?}");
+        assert!(r.view.stats.iter().all(|s| !s.pending && s.letter != "?"), "{:?}", r.view.stats);
+        assert!(!r.view.grade_pending);
         // A label no type has (and not a known splice) is kept the same way.
         let odd = card("Torid Crita-acriata / +198.6% Critical Chance / +152.1% Critical Damage / +60.2% Brand New Thing / -90% Projectile Speed");
         let r = rebuild(d, &GradeSheet::default(), "LotusRifleRandomModRare", &odd, Some("/Lotus/Weapons/ClanTech/Bio/BioWeapon"), None).unwrap();
         assert!(r.view.stats[2].legacy && r.view.stats[2].text == "+60.2% Brand New Thing");
-        // Known splices are still "collecting data", not removed.
+        // A known splice the type can't roll is "collecting data", not removed.
         let melee = &d.types["PlayerMeleeWeaponRandomModRare"];
-        assert_eq!(match_label(melee, "slamattackdamage").as_deref(), Some("Pending:Slam Attack Damage"));
+        assert_eq!(match_label(melee, "weakpointdamage").as_deref(), Some("Pending:Weakpoint Damage"));
     }
 
     #[test]

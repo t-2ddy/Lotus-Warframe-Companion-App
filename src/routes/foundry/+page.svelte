@@ -413,9 +413,15 @@
     margin: 0 0 12px;
   }
 
+  /* The art and part circles scale with the window, the same on every card. A card is never
+     narrower than the art plus a full set (5 parts) at full size, so circles never shrink to fit:
+     the 71px is the card's padding, border and gaps. At the default 1350px window: 3 columns,
+     88px art, 32px circles. */
   .grid {
+    --art: clamp(72px, 6.5vw, 180px);
+    --dot: clamp(28px, 2.4vw, 64px);
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(calc(var(--art) + 5 * var(--dot) + 71px), 1fr));
     gap: 14px;
   }
 
@@ -501,8 +507,8 @@
 
   .portrait {
     flex: none;
-    width: 104px;
-    height: 104px;
+    width: var(--art);
+    height: var(--art);
   }
 
   .portrait {
@@ -518,7 +524,7 @@
     border-radius: 8px;
   }
 
-  /* One row: each circle is up to 48px and shrinks so a whole set fits beside the art. */
+  /* One row of circles, all the same size (see .grid). */
   .parts {
     flex: 1;
     min-width: 0;
@@ -532,8 +538,9 @@
 
   .parts li {
     position: relative;
-    flex: 0 1 48px;
-    min-width: 0;
+    flex: none;
+    box-sizing: border-box;
+    width: var(--dot);
     aspect-ratio: 1;
     border-radius: 50%;
     background: var(--surface-2);

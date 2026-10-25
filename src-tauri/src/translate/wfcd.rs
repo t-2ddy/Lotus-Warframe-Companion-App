@@ -2,6 +2,10 @@
 //!
 //! Data: https://github.com/WFCD/warframe-items (data/json/<Category>.json). There is no single
 //! combined file, so each category is downloaded and cached in the app data folder.
+//!
+//! WFCD sometimes ships relics without their rewards (every relic, on 2026-10-23). Those are
+//! filled from WFCD's drop data (drops.warframestat.us, made from DE's drop tables), or from the
+//! snapshot `data/relic_rewards.json` (made by `scripts/gen_relic_rewards.py`) that ships with the app.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -20,6 +24,11 @@ pub const CATEGORIES: [&str; 24] = [
 
 /// Re-download the data when the cached copy is older than this.
 pub const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+const DROPS_URL: &str = "https://drops.warframestat.us/data/relics.json";
+/// The `files` entry (and cache file name) holding the drop data's relics.
+pub const DROPS: &str = "DropRelics";
+const BUNDLED_RELICS: &str = include_str!("../../data/relic_rewards.json");
 
 /// What the app needs to know about one item.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -207,6 +216,58 @@ struct RawComponent {
     item_count: Option<f64>,
 }
 
+/// Drop data's relics.json: `{"relics":[{"tier":"Lith","relicName":"T14","state":"Intact","rewards":[…]}]}`.
+#[derive(Debug, Deserialize)]
+struct DropFile {
+    #[serde(default)]
+    relics: Vec<DropRelic>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DropRelic {
+    #[serde(default)]
+    tier: String,
+    #[serde(default)]
+    relic_name: String,
+    #[serde(default)]
+    state: String,
+    #[serde(default)]
+    rewards: Vec<DropReward>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DropReward {
+    #[serde(default)]
+    item_name: String,
+    #[serde(default)]
+    chance: Option<f64>,
+}
+
+/// Relic name ("Lith T14") → its Intact rewards as (item name, chance).
+type RelicTables = HashMap<String, Vec<(String, f64)>>;
+
+/// The bundled snapshot: relic tables, and item paths for the reward names.
+#[derive(Debug, Deserialize)]
+struct BundledRelics {
+    paths: HashMap<String, String>,
+    relics: RelicTables,
+}
+
+/// The Intact tables of a drop data relics.json (empty if it doesn't parse).
+fn drop_tables(bytes: &[u8]) -> RelicTables {
+    let Ok(file) = serde_json::from_slice::<DropFile>(bytes) else { return RelicTables::new() };
+    file.relics
+        .into_iter()
+        .filter(|r| r.state == "Intact" && !r.relic_name.is_empty() && !r.rewards.is_empty())
+        .map(|r| {
+            let rewards = r.rewards.into_iter().map(|x| (x.item_name, x.chance.unwrap_or(0.0))).collect();
+            (format!("{} {}", r.tier, r.relic_name), rewards)
+        })
+        .collect()
+}
+
 /// Lookup from internal path to item.
 #[derive(Debug, Default)]
 pub struct ItemIndex {
@@ -339,8 +400,15 @@ impl ItemIndex {
         let mut used_in_crafting = HashSet::new();
         let mut relic_rewards: HashMap<String, Vec<RelicReward>> = HashMap::new();
         let mut frame_codenames: HashMap<String, String> = HashMap::new();
+        // Every relic WFCD lists (name without refinement), with rewards or not.
+        let mut relic_bases: HashSet<String> = HashSet::new();
+        let mut drops: Option<RelicTables> = None;
 
         for (category, bytes) in files {
+            if category == DROPS {
+                drops = Some(drop_tables(bytes)).filter(|t| !t.is_empty());
+                continue;
+            }
             let Ok(raw) = serde_json::from_slice::<Vec<RawItem>>(bytes) else {
                 eprintln!("[translate] couldn't parse WFCD {category}.json; skipping it");
                 continue;
@@ -367,6 +435,9 @@ impl ItemIndex {
                     if let Some(code) = item.unique_name.rsplit('/').next() {
                         frame_codenames.entry(code.to_string()).or_insert_with(|| name.clone());
                     }
+                }
+                if category == "Relics" {
+                    relic_bases.insert(split_relic_name(&name).0.to_string());
                 }
                 if category == "Relics" && !item.rewards.is_empty() {
                     let (base, refinement) = split_relic_name(&name);
@@ -494,6 +565,35 @@ impl ItemIndex {
                 by_name.insert(key, path.clone());
             }
         }
+
+        // Relics WFCD lists without rewards: the drop data's table, else the bundled one. The
+        // drop data names items only, so paths come from the snapshot, then from WFCD names.
+        let bundled: BundledRelics = serde_json::from_str(BUNDLED_RELICS).expect("bundled relic_rewards.json is valid");
+        let path_of = |name: &str| {
+            // "2X Forma Blueprint" and "1200X Kuva" drop the plain item.
+            let plain = name.split_once("X ").filter(|(n, _)| n.parse::<u32>().is_ok()).map_or(name, |(_, rest)| rest);
+            bundled.paths.get(name).or_else(|| by_name.get(&plain.to_lowercase())).cloned().unwrap_or_default()
+        };
+        let mut filled = 0;
+        for base in &relic_bases {
+            if relic_rewards.contains_key(base) {
+                continue;
+            }
+            // WFCD names Requiem relics "Requiem I Relic"; the drop data says "Requiem I".
+            let key = base.strip_suffix(" Relic").unwrap_or(base);
+            let Some(table) = drops.as_ref().and_then(|d| d.get(key)).or_else(|| bundled.relics.get(key)) else { continue };
+            let rewards = table
+                .iter()
+                .map(|(name, chance)| RelicReward { path: path_of(name), name: clean_name(name), chance: *chance })
+                .collect();
+            relic_rewards.insert(base.clone(), rewards);
+            filled += 1;
+        }
+        if filled > 0 {
+            let source = if drops.is_some() { "drop data" } else { "bundled snapshot" };
+            eprintln!("[translate] {filled} relics had no WFCD rewards; filled from the {source}");
+        }
+
         let parent_file = parent_of.into_iter().map(|(path, (_, file))| (path, file)).collect();
         Self { items, masterables, used_in_crafting, parent_file, relic_rewards, frame_codenames, by_name }
     }
@@ -666,31 +766,38 @@ pub fn fallback_name(path: &str) -> String {
     out
 }
 
-/// Loads cached category files from `dir`, downloading any that are missing or older than
-/// [`MAX_AGE`]. A failed download falls back to the cached copy, so the app works offline.
+/// Loads cached category files (and the drop data) from `dir`, downloading any that are missing
+/// or older than [`MAX_AGE`]. A failed or broken download falls back to the cached copy, so the
+/// app works offline.
 pub fn load_or_refresh(dir: &Path) -> Vec<(String, Vec<u8>)> {
     let _ = std::fs::create_dir_all(dir);
+    let sources = CATEGORIES.iter().map(|c| (*c, format!("{BASE_URL}{c}.json"))).chain([(DROPS, DROPS_URL.to_string())]);
     let mut files = Vec::new();
-    for category in CATEGORIES {
-        let path = dir.join(format!("{category}.json"));
+    for (name, url) in sources {
+        let path = dir.join(format!("{name}.json"));
         let fresh = std::fs::metadata(&path)
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| SystemTime::now().duration_since(t).ok())
             .is_some_and(|age| age < MAX_AGE);
         if !fresh {
-            match download(category) {
-                Ok(bytes) => {
+            match download(&url) {
+                Ok(bytes) if usable(name, &bytes) || !path.exists() => {
                     let tmp = path.with_extension("json.tmp");
                     if std::fs::write(&tmp, &bytes).is_ok() {
                         let _ = std::fs::rename(&tmp, &path);
                     }
                 }
-                Err(e) => eprintln!("[translate] download {category}.json failed: {e}"),
+                Ok(_) => {
+                    eprintln!("[translate] downloaded {name}.json looks broken; keeping the cached copy");
+                    // Try again after MAX_AGE rather than at every start.
+                    let _ = std::fs::File::options().write(true).open(&path).and_then(|f| f.set_modified(SystemTime::now()));
+                }
+                Err(e) => eprintln!("[translate] download {name}.json failed: {e}"),
             }
         }
         if let Ok(bytes) = std::fs::read(&path) {
-            files.push((category.to_string(), bytes));
+            files.push((name.to_string(), bytes));
         }
     }
     files
@@ -700,13 +807,26 @@ pub fn load_or_refresh(dir: &Path) -> Vec<(String, Vec<u8>)> {
 pub fn load_cached(dir: &Path) -> Vec<(String, Vec<u8>)> {
     CATEGORIES
         .iter()
+        .chain(&[DROPS])
         .filter_map(|c| std::fs::read(dir.join(format!("{c}.json"))).ok().map(|b| (c.to_string(), b)))
         .collect()
 }
 
-fn download(category: &str) -> Result<Vec<u8>, String> {
-    let url = format!("{BASE_URL}{category}.json");
-    let mut response = crate::net::agent().get(&url).call().map_err(|e| e.to_string())?;
+/// Whether a downloaded file is good enough to replace the cached copy: it parses and isn't
+/// empty, and relics come with rewards.
+fn usable(name: &str, bytes: &[u8]) -> bool {
+    if name == DROPS {
+        return !drop_tables(bytes).is_empty();
+    }
+    match serde_json::from_slice::<Vec<RawItem>>(bytes) {
+        Ok(items) if name == "Relics" => items.iter().any(|i| !i.rewards.is_empty()),
+        Ok(items) => !items.is_empty(),
+        Err(_) => false,
+    }
+}
+
+fn download(url: &str) -> Result<Vec<u8>, String> {
+    let mut response = crate::net::agent().get(url).call().map_err(|e| e.to_string())?;
     response
         .body_mut()
         .with_config()
@@ -841,6 +961,56 @@ mod tests {
         ]);
         assert!(index.used_in_crafting("/F/Ash"));
         assert!(!index.used_in_crafting("/F/Voidrig"));
+    }
+
+    #[test]
+    fn relics_without_rewards_are_filled_from_drop_data_or_the_snapshot() {
+        // As WFCD shipped them on 2026-10-23: names, no rewards.
+        let relics = br#"[{"uniqueName":"/R/T14","name":"Lith T14 Intact","rewards":[]},
+            {"uniqueName":"/R/T14R","name":"Lith T14 Radiant","rewards":[]},
+            {"uniqueName":"/R/Gone","name":"Lith Z99 Intact","rewards":[]}]"#;
+        let misc = br#"[{"uniqueName":"/Forma","name":"Forma Blueprint","imageName":"forma.png"}]"#;
+        let drops = br#"{"relics":[
+            {"tier":"Lith","relicName":"T14","state":"Radiant","rewards":[{"itemName":"Fang Prime Handle","chance":20}]},
+            {"tier":"Lith","relicName":"T14","state":"Intact","rewards":[
+                {"itemName":"Fang Prime Handle","chance":25.33},
+                {"itemName":"2X Forma Blueprint","chance":11},
+                {"itemName":"Brand New Prime Barrel","chance":2}]},
+            {"tier":"Requiem","state":"Intact","rewards":[{"itemName":"Lohk","chance":10}]}]}"#;
+        let base = vec![("Relics".to_string(), relics.to_vec()), ("Misc".to_string(), misc.to_vec())];
+
+        let mut files = base.clone();
+        files.push((DROPS.to_string(), drops.to_vec()));
+        let index = ItemIndex::build(&files);
+        let rewards = index.relic_rewards("Lith T14");
+        let got: Vec<(&str, &str, f64)> = rewards.iter().map(|r| (r.name.as_str(), r.path.as_str(), r.chance)).collect();
+        assert_eq!(
+            got,
+            vec![
+                ("Fang Prime Handle", "/Lotus/Types/Recipes/Weapons/WeaponParts/PrimeFangHandle", 25.33),
+                ("2X Forma Blueprint", "/Lotus/Types/Recipes/Components/FormaBlueprint", 11.0),
+                ("Brand New Prime Barrel", "", 2.0),
+            ],
+            "Intact table; paths from the snapshot, unknown items keep their name"
+        );
+        assert!(index.relic_rewards("Lith Z99").is_empty(), "in neither source");
+
+        // No drop data: the bundled snapshot (made from the real tables) fills it.
+        let index = ItemIndex::build(&base);
+        let rewards = index.relic_rewards("Lith T14");
+        assert_eq!(rewards.len(), 6);
+        assert!(rewards.iter().all(|r| r.path.starts_with("/Lotus/")));
+    }
+
+    #[test]
+    fn broken_downloads_dont_replace_the_cache() {
+        assert!(!usable("Relics", br#"[{"uniqueName":"/R/A","name":"Lith A1 Intact","rewards":[]}]"#));
+        assert!(usable("Relics", br#"[{"uniqueName":"/R/A","name":"Lith A1 Intact","rewards":[{"chance":2,"item":{"uniqueName":"/P/F","name":"F"}}]}]"#));
+        assert!(usable("Misc", br#"[{"uniqueName":"/M/A","name":"A"}]"#));
+        assert!(!usable("Misc", b"[]"));
+        assert!(!usable("Misc", b"<html>rate limited</html>"));
+        assert!(!usable(DROPS, br#"{"relics":[]}"#));
+        assert!(usable(DROPS, br#"{"relics":[{"tier":"Lith","relicName":"A1","state":"Intact","rewards":[{"itemName":"F","chance":2}]}]}"#));
     }
 
     #[test]

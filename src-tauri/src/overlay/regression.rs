@@ -62,8 +62,9 @@ fn same_tag(data: &RivenData, kind: &str, ours: &str, want: &str) -> bool {
     if let (Some(a), Some(b)) = (rivens::spliced_element(ours), rivens::spliced_element(want)) {
         return a == b;
     }
+    let Some(name) = ours.strip_prefix(rivens::PENDING_PREFIX) else { return false };
     let unknown_to_us = want.starts_with('?') || data.types.get(kind).is_some_and(|k| !k.stats.contains_key(want));
-    ours.starts_with(rivens::PENDING_PREFIX) && unknown_to_us
+    unknown_to_us || rivens::SPLICED_TRAITS.iter().any(|(n, t)| *n == name && *t == want)
 }
 
 /// The riven's own name matches (the weapon part is checked by the numbers fitting its
@@ -204,6 +205,7 @@ fn tags_compare_through_overlay_names() {
     assert!(same_tag(&data, "LotusRifleRandomModRare", "SplicedViral", "WeaponViralDamageMod"));
     assert!(same_tag(&data, "LotusShotgunRandomModRare", "Legacy:WeaponZoomFovMod", "WeaponZoomFovMod"));
     assert!(same_tag(&data, "LotusRifleRandomModRare", "Pending:Status Damage", "WeaponStatusDamage"));
+    assert!(same_tag(&data, "PlayerMeleeWeaponRandomModRare", "Pending:Weakpoint Damage", "WeaponWeakpointDamage"));
     assert!(!same_tag(&data, "LotusRifleRandomModRare", "Pending:Status Damage", "WeaponCritChanceMod"));
 }
 

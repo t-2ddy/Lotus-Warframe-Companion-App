@@ -5,6 +5,49 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Added
+- Inventory → Prime Sets: every prime set you hold a part of, shown by its main blueprint, with
+  how many complete sets you have and the set's warframe.market price (WTS/WTB). Click a set for
+  each part: how many you hold and its price. Only tradable copies count (blueprints and prime
+  parts, not built warframe parts or weapons); resources like Orokin Cells aren't set parts.
+  Filters for full sets and vaulted. Click the Sets owned or Set price column to sort: highest
+  first, then lowest first, then back to name order.
+
+### Fixed
+- Relic reward overlay: showed nothing, because WFCD's item data (2026-10-23) lists every relic
+  with no rewards. Relics without rewards now get them from WFCD's drop data
+  (drops.warframestat.us), or from a snapshot that ships with the app
+  (`scripts/gen_relic_rewards.py`). This also fixes relic rewards in Inventory → Relics.
+- Item data: a downloaded file that's broken (doesn't parse, is empty, or has relics without
+  rewards) no longer replaces the cached copy.
+- Overlays showed twice: only one Lotus runs at a time now. Opening it again brings the running
+  window forward. A second copy drew its own overlays and, without the live game log, read
+  riven cards seconds late, so it sometimes showed the old roll as the new one.
+- Riven overlays: a spliced Gas line read as "ecas" or "eas" (its icon or a letter misread) is
+  now recognised, and when the screen's several reads disagree on a label, one that names a
+  stat beats junk. A Kuva Sobek riven with Gas failed with "stat not recognised".
+- Riven reroll overlay: a new roll caught mid-fade with a cut-off name ("Boar crt") is read again
+  instead of being shown.
+
+- Rivens: melee rivens could get a second "Damage to Grineer" (and other factions) under the
+  wrong tag, depending on load order.
+
+### Changed
+- Foundry: item art and part circles scale with the window and are the same size on every
+  card. Before, circles shrank to fit their set, so a 5-part card had smaller ones than a
+  3-part card, and all of them jumped when the column count changed.
+- Riven data: stats now also come from DE's own Public Export, which is ahead of Public Export
+  Plus. Shotgun rivens roll Zoom again, and the spliced traits (Gas, Viral, Corrosive, Radiation,
+  Blast, Magnetic, Status Damage, Weak Point Damage and Critical Chance, Ammo Efficiency,
+  Magazine Reloaded when Holstered, Heavy Attack Damage and Wind Up, Parry Angle, Slam Damage,
+  Damage to Orokin/Techrot/Scaldra) have their real ranges: they're graded like any stat
+  instead of "collecting data". The grading sheet still doesn't cover spliced traits. The app
+  checks DE's export at the first start with this version.
+- Riven names: where a spliced trait shares an older stat's name part ("laci"/"nus"), the name
+  counts it once, as the older stat.
+- Riven reroll overlay: after choosing between the old and new roll, the kept riven is read
+  again and shown as the current one every time.
+
 ## [0.1.7] — 2026-10-23
 
 ### Fixed

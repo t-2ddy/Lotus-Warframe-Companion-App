@@ -120,13 +120,23 @@ impl RivenData {
         }
         for t in self.types.values_mut() {
             // "WeaponFactionDamage" or "WeaponMeleeFactionDamage", and what a faction is worth.
-            let Some((stem, value)) = t.stats.iter().find_map(|(tag, s)| {
-                tag.split_once(MARK).map(|(before, _)| (format!("{before}{MARK}"), s.value))
-            }) else {
-                continue;
+            // Melee has both since DE's export: its newer factions (Orokin, Techrot, Scaldra)
+            // use the guns' tags, so its own stem is taken, and a faction it has under either
+            // isn't added again.
+            let mut stems: Vec<(String, f64)> = t
+                .stats
+                .iter()
+                .filter_map(|(tag, s)| tag.split_once(MARK).map(|(before, _)| (format!("{before}{MARK}"), s.value)))
+                .collect();
+            stems.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(&b.0)));
+            let Some((stem, value)) = stems.into_iter().next() else { continue };
+            let has = |stats: &HashMap<String, StatInfo>, faction: &str| {
+                stats.keys().any(|tag| tag.split_once(MARK).is_some_and(|(_, f)| f == faction))
             };
             for (faction, s) in &templates {
-                t.stats.entry(format!("{stem}{faction}")).or_insert_with(|| StatInfo { value, ..s.clone() });
+                if !has(&t.stats, faction) {
+                    t.stats.insert(format!("{stem}{faction}"), StatInfo { value, ..s.clone() });
+                }
             }
         }
     }
@@ -137,6 +147,15 @@ static DATA: RwLock<Option<Arc<RivenData>>> = RwLock::new(None);
 /// The bundled copy (`data/rivens.json`).
 pub fn bundled() -> RivenData {
     RivenData::parse(include_str!("../data/rivens.json")).expect("bundled rivens.json is valid")
+}
+
+/// The bundled copy as the app uses it, every weapon at [`DISPOSITION`] (tests otherwise keep
+/// the old values), for cards captured since the change.
+#[cfg(test)]
+pub fn bundled_flat() -> RivenData {
+    let mut d = bundled();
+    d.flatten_dispositions();
+    d
 }
 
 /// The riven data in use: a download if one is newer than the bundled copy (see
@@ -206,33 +225,40 @@ fn roll_fraction(v: u32) -> f64 {
     if (0.0..=1.0).contains(&f) { f } else { 0.0 }
 }
 
-/// Spliced traits (Update 44.1) merge two traits into one. The combined elements roll in the
-/// same range as a single element, so they're worked out like Heat (tag `Spliced<Name>`).
+/// Spliced traits (Update 44.1) merge two traits into one. The combined elements are their own
+/// stats in DE's export (`WeaponGasDamageMod`); data from before it has them worked out like
+/// Heat, which they roll the same as (tag `Spliced<Name>`).
 pub const SPLICED_ELEMENTS: [&str; 6] = ["Corrosive", "Viral", "Blast", "Gas", "Radiation", "Magnetic"];
 
-/// The other spliced traits, as the card words them (wiki: Riven Splicer, checked 2026-10-09;
-/// it uses both "Slam Damage" and "Slam Attack Damage", and both "Magazine Reload While
-/// Holstered" and "Reload While Holstered"). Their ranges aren't known yet, so they're shown
-/// but not graded (tag `Pending:<Name>`). "Windup" and "Wind Up" read the same once spaces go.
-pub const SPLICED_PENDING: &[&str] = &[
+/// The other spliced traits: how cards word them (wiki: Riven Splicer, checked 2026-10-09; it
+/// uses both "Slam Damage" and "Slam Attack Damage", and both "Magazine Reload While Holstered"
+/// and "Reload While Holstered") and their tag in DE's export. A riven type whose data has the
+/// tag grades them like any stat; otherwise they're shown but not graded (tag `Pending:<Name>`).
+/// "Windup" and "Wind Up" read the same once spaces go.
+pub const SPLICED_TRAITS: &[(&str, &str)] = &[
     // Ranged
-    "Weakpoint Damage",
-    "Weakpoint Critical Chance",
-    "Ammo Efficiency",
-    "Magazine Reload While Holstered",
-    "Reload While Holstered",
-    "Status Damage",
+    ("Weakpoint Damage", "WeaponWeakpointDamage"),
+    ("Weakpoint Critical Chance", "WeaponWeakpointCriticalChance"),
+    ("Ammo Efficiency", "WeaponAmmoEfficiency"),
+    ("Magazine Reload While Holstered", "WeaponMagazineReloadHolstered"),
+    ("Reload While Holstered", "WeaponMagazineReloadHolstered"),
+    ("Status Damage", "WeaponStatusDamage"),
     // Melee
-    "Heavy Attack Damage",
-    "Heavy Attack Windup Speed",
-    "Parry Angle",
-    "Slam Attack Damage",
-    "Slam Damage",
+    ("Heavy Attack Damage", "WeaponMeleeHeavyAttackDamageMod"),
+    ("Heavy Attack Windup Speed", "WeaponMeleeHeavyAttackChargeMod"),
+    ("Parry Angle", "WeaponMeleeParryAngleMod"),
+    ("Slam Attack Damage", "WeaponMeleeSlamDamageMod"),
+    ("Slam Damage", "WeaponMeleeSlamDamageMod"),
     // All
-    "Damage to Orokin",
-    "Damage to Techrot",
-    "Damage to Scaldra",
+    ("Damage to Orokin", "WeaponFactionDamageOrokin"),
+    ("Damage to Techrot", "WeaponFactionDamageTechrot"),
+    ("Damage to Scaldra", "WeaponFactionDamageScaldra"),
 ];
+
+/// A spliced trait's tag: DE's (`WeaponStatusDamage`), a combined element's, or a pending one.
+pub fn spliced_trait(tag: &str) -> bool {
+    tag.starts_with(PENDING_PREFIX) || spliced_element(tag).is_some() || SPLICED_TRAITS.iter().any(|(_, t)| *t == tag)
+}
 
 pub const PENDING_PREFIX: &str = "Pending:";
 /// A stat read off a card that this riven type can't roll any more (or never could), kept as
@@ -249,7 +275,7 @@ pub const UNREAD_PREFIX: &str = "Unread:";
 /// sheet; `None` if the type rolls it, it's spliced, or no type has it.
 pub fn legacy_stat(data: &RivenData, kind: &RivenType, tag: &str) -> Option<StatInfo> {
     let tag = tag.strip_prefix(LEGACY_PREFIX).unwrap_or(tag);
-    if kind.stats.contains_key(tag) || spliced_element(tag).is_some() || tag.starts_with(PENDING_PREFIX) {
+    if kind.stats.contains_key(tag) || spliced_trait(tag) {
         return None;
     }
     let mut found: Vec<(&String, &StatInfo)> = data.types.iter().filter_map(|(k, t)| t.stats.get(tag).map(|s| (k, s))).collect();
@@ -287,13 +313,16 @@ pub fn spliced_element(tag: &str) -> Option<&'static str> {
     })
 }
 
-/// A stat's data, including spliced elements (Heat's numbers under the element's name; an owned
-/// Latron riven's Viral roll matches them).
+/// A stat's data, including spliced elements: their own stat in DE's export, else Heat's numbers
+/// under the element's name (an owned Latron riven's Viral roll matches them).
 pub fn stat_info(kind: &RivenType, tag: &str) -> Option<StatInfo> {
     if let Some(s) = kind.stats.get(tag) {
         return Some(s.clone());
     }
     let name = spliced_element(tag)?;
+    if let Some(s) = kind.stats.get(&format!("Weapon{name}DamageMod")) {
+        return Some(s.clone());
+    }
     let heat = kind.stats.get("WeaponFireDamageMod")?;
     Some(StatInfo { value: heat.value, prefix: String::new(), suffix: String::new(), label: format!("|val|% {name}") })
 }
@@ -304,7 +333,7 @@ pub fn is_spliced(data: &RivenData, kind: &RivenType, tag: &str) -> bool {
     if tag.starts_with(LEGACY_PREFIX) || tag.starts_with(UNREAD_PREFIX) || legacy_stat(data, kind, tag).is_some() {
         return false;
     }
-    tag.starts_with(PENDING_PREFIX) || spliced_element(tag).is_some() || !kind.stats.contains_key(tag)
+    spliced_trait(tag) || !kind.stats.contains_key(tag)
 }
 
 /// A readable name for a tag the data doesn't have: `WeaponStatusDamage` → "Status Damage",
@@ -838,19 +867,28 @@ mod tests {
 
     #[test]
     fn owned_rivens_keep_removed_stats() {
-        // An older shotgun riven with negative Zoom, which shotguns can't roll any more.
-        // (Made-up rolls.)
+        // A stat the riven's type doesn't roll: archguns don't roll Projectile Speed, other gun
+        // types do. (Made-up rolls; shotgun Zoom was the example until it came back, 2026-10.)
         let d = data();
         let r = OwnedRiven {
             id: "s".into(),
-            item_type: "/Lotus/Upgrades/Mods/Randomized/LotusShotgunRandomModRare".into(),
-            fingerprint: r#"{"compat":"/Lotus/Weapons/Tenno/Shotgun/Shotgun","lvl":8,"buffs":[{"Tag":"WeaponCritChanceMod","Value":500000000},{"Tag":"WeaponCritDamageMod","Value":500000000}],"curses":[{"Tag":"WeaponZoomFovMod","Value":500000000}]}"#.into(),
+            item_type: "/Lotus/Upgrades/Mods/Randomized/LotusArchgunRandomModRare".into(),
+            fingerprint: r#"{"compat":"/Lotus/Weapons/Tenno/Archwing/Primary/ArchBurstGun/ArchBurstGun","lvl":8,"buffs":[{"Tag":"WeaponCritChanceMod","Value":500000000},{"Tag":"WeaponCritDamageMod","Value":500000000}],"curses":[{"Tag":"WeaponProjectileSpeedMod","Value":500000000}]}"#.into(),
         };
         let v = view(&d, &GradeSheet::default(), &r, MAX_RANK).unwrap();
-        let zoom = v.stats.iter().find(|s| s.tag == "WeaponZoomFovMod").unwrap();
-        assert_eq!((zoom.text.as_str(), zoom.legacy, zoom.pending), ("Zoom", true, true));
+        let speed = v.stats.iter().find(|s| s.tag == "WeaponProjectileSpeedMod").unwrap();
+        assert_eq!((speed.text.as_str(), speed.legacy, speed.pending), ("Projectile Speed", true, true));
         assert!(!v.grade_pending, "graded from its other stats");
         assert!(v.stats.iter().filter(|s| !s.legacy).all(|s| s.letter != "?"));
+        // Shotgun rivens roll Zoom again (DE's export, October 2026): graded like any stat.
+        let shotgun = OwnedRiven {
+            item_type: "/Lotus/Upgrades/Mods/Randomized/LotusShotgunRandomModRare".into(),
+            fingerprint: r#"{"compat":"/Lotus/Weapons/Tenno/Shotgun/Shotgun","lvl":8,"buffs":[{"Tag":"WeaponCritChanceMod","Value":500000000},{"Tag":"WeaponCritDamageMod","Value":500000000}],"curses":[{"Tag":"WeaponZoomFovMod","Value":500000000}]}"#.into(),
+            ..r
+        };
+        let v = view(&d, &GradeSheet::default(), &shotgun, MAX_RANK).unwrap();
+        let zoom = v.stats.iter().find(|s| s.tag == "WeaponZoomFovMod").unwrap();
+        assert!(!zoom.legacy && !zoom.pending && zoom.letter != "?", "{zoom:?}");
     }
 
     #[test]
@@ -864,8 +902,11 @@ mod tests {
         };
         let v = view(&d, &GradeSheet::default(), &torid, MAX_RANK).unwrap();
         assert_eq!(v.stats.len(), 4, "the spliced trait is shown, not dropped");
+        // Its range comes from DE's export: worked out like any stat. The grading sheet still
+        // doesn't cover spliced traits.
         let status = v.stats.iter().find(|s| s.tag == "WeaponStatusDamage").unwrap();
-        assert_eq!((status.text.as_str(), status.pending, status.letter.as_str()), ("Status Damage", true, "?"));
+        assert_eq!((status.text.as_str(), status.pending), ("+120.1% Status Damage", false));
+        assert_ne!(status.letter, "?");
         assert!(v.grade_pending && v.grade.is_none());
         let latron = OwnedRiven {
             id: "l".into(),

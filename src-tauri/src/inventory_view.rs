@@ -7,6 +7,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::State;
 
+use crate::foundry::blueprint_of;
 use crate::pipeline::Shared;
 use crate::translate::wfcd::{split_relic_name, BLUEPRINT_IMAGE, REFINEMENTS};
 use crate::translate::{split_rank_key, Flat, ItemIndex, RANKS};
@@ -86,10 +87,42 @@ pub struct RelicRow {
     pub rewards: Vec<RewardView>,
 }
 
+/// One part of a prime set as it's traded: the main blueprint, a weapon part, or a warframe
+/// part's blueprint (the recipe lists the built `…Component`, which can't be traded).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPart {
+    /// Its warframe.market item (`gameRef`).
+    pub path: String,
+    pub name: String,
+    pub image: Option<String>,
+    pub overlay: Option<String>,
+    pub needed: u32,
+    /// Tradable copies held (built warframe parts and built weapons don't count).
+    pub owned: i64,
+}
+
+/// A prime set the account holds parts of.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrimeSet {
+    /// The built item, which is also the set's warframe.market item (`frost_prime_set`).
+    pub path: String,
+    pub name: String,
+    /// The main blueprint's picture, with the item drawn over it.
+    pub image: Option<String>,
+    pub overlay: Option<String>,
+    pub vaulted: bool,
+    /// Complete sets held: each part's copies over how many the set needs, the lowest of them.
+    pub count: i64,
+    pub parts: Vec<SetPart>,
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryData {
     pub parts: Vec<Tile>,
+    pub sets: Vec<PrimeSet>,
     pub relics: Vec<RelicRow>,
     pub mods: Vec<ModTile>,
     pub arcanes: Vec<ModTile>,
@@ -244,6 +277,7 @@ pub fn build(index: &ItemIndex, current: &Flat) -> InventoryData {
         row.rewards = views;
     }
 
+    data.sets = prime_sets(index, &owned);
     data.relics = relics.into_values().collect();
     data.relics.sort_by(|a, b| era_rank(&a.era).cmp(&era_rank(&b.era)).then_with(|| natural_cmp(&a.name, &b.name)));
     data.mods = mod_tiles(index, mods);
@@ -251,6 +285,51 @@ pub fn build(index: &ItemIndex, current: &Flat) -> InventoryData {
     data.parts.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     data.misc.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     data
+}
+
+/// Prime sets with at least one tradable part held, by name. `owned` counts MiscItems and Recipes,
+/// where tradable parts and blueprints are kept. Resources (Orokin Cells) aren't set parts.
+fn prime_sets(index: &ItemIndex, owned: &HashMap<&str, i64>) -> Vec<PrimeSet> {
+    let mut sets: Vec<PrimeSet> = index
+        .masterables()
+        .iter()
+        .filter(|m| m.is_prime)
+        .filter_map(|m| {
+            let parts: Vec<SetPart> = m
+                .parts
+                .iter()
+                .filter(|p| !crate::mastery::is_resource(index, &p.path))
+                .map(|p| {
+                    let path = blueprint_of(&p.path).unwrap_or_else(|| p.path.clone());
+                    let blueprint = path.ends_with("Blueprint");
+                    let image = index.get(&path).and_then(|i| i.image.clone());
+                    SetPart {
+                        name: index.display_name(&path),
+                        image: if blueprint { image.or_else(|| Some(BLUEPRINT_IMAGE.to_string())) } else { image },
+                        overlay: if blueprint { index.blueprint_overlay(&path) } else { None },
+                        needed: p.count.max(1),
+                        owned: owned.get(path.as_str()).copied().unwrap_or(0),
+                        path,
+                    }
+                })
+                .collect();
+            if parts.iter().all(|p| p.owned == 0) {
+                return None;
+            }
+            let info = index.get(&m.path);
+            Some(PrimeSet {
+                path: m.path.clone(),
+                name: index.display_name(&m.path),
+                image: Some(BLUEPRINT_IMAGE.to_string()),
+                overlay: info.and_then(|i| i.image.clone()),
+                vaulted: m.vaulted,
+                count: parts.iter().map(|p| p.owned / i64::from(p.needed)).min().unwrap_or(0),
+                parts,
+            })
+        })
+        .collect();
+    sets.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+    sets
 }
 
 fn part_tile(index: &ItemIndex, path: &str, count: i64, blueprint: bool) -> Tile {
@@ -440,6 +519,58 @@ mod tests {
 
         assert_eq!(data.misc.len(), 1);
         assert_eq!((data.misc[0].name.as_str(), data.misc[0].kind.as_str()), ("Ferrite", "Resource"));
+    }
+
+    #[test]
+    fn prime_sets_count_tradable_parts() {
+        let wr = "/Lotus/Types/Recipes/WarframeRecipes/";
+        let wp = "/Lotus/Types/Recipes/Weapons/WeaponParts/";
+        let warframes = format!(
+            r#"[{{"uniqueName":"/F/FrostPrime","name":"Frost Prime","masterable":true,"isPrime":true,"vaulted":true,"imageName":"frost.png",
+                "components":[{{"uniqueName":"{wr}FrostPrimeBlueprint"}},{{"uniqueName":"{wr}FrostPrimeChassisComponent"}},
+                    {{"uniqueName":"/Lotus/Types/Items/MiscItems/OrokinCell","itemCount":2}}]}}]"#
+        );
+        let primary = format!(
+            r#"[{{"uniqueName":"/W/BratonPrime","name":"Braton Prime","masterable":true,"isPrime":true,
+                "components":[{{"uniqueName":"{wp}BratonPrimeBarrel","itemCount":2}}]}},
+               {{"uniqueName":"/W/LatronPrime","name":"Latron Prime","masterable":true,"isPrime":true,
+                "components":[{{"uniqueName":"{wp}LatronPrimeBarrel"}}]}},
+               {{"uniqueName":"/W/Braton","name":"Braton","masterable":true,"components":[{{"uniqueName":"{wp}BratonBarrel"}}]}}]"#
+        );
+        let components = format!(
+            r#"[{{"uniqueName":"{wr}FrostPrimeBlueprint","name":"Blueprint"}},{{"uniqueName":"{wr}FrostPrimeChassisComponent","name":"Chassis"}},
+                {{"uniqueName":"{wp}BratonPrimeBarrel","name":"Barrel","imageName":"barrel.png"}},{{"uniqueName":"{wp}LatronPrimeBarrel","name":"Barrel"}},
+                {{"uniqueName":"{wp}BratonBarrel","name":"Barrel"}}]"#
+        );
+        let index = ItemIndex::build(&[
+            ("Warframes".into(), warframes.into_bytes()),
+            ("Primary".into(), primary.into_bytes()),
+            ("Components".into(), components.into_bytes()),
+            ("Resources".into(), br#"[{"uniqueName":"/Lotus/Types/Items/MiscItems/OrokinCell","name":"Orokin Cell"}]"#.to_vec()),
+        ]);
+        // Two Frost sets (the built chassis doesn't count, its blueprints do), one Braton barrel
+        // of the two a set needs, no Latron parts, and a non-prime part.
+        let raw = format!(
+            r#"{{"Recipes":[{{"ItemCount":2,"ItemType":"{wr}FrostPrimeBlueprint"}},{{"ItemCount":3,"ItemType":"{wr}FrostPrimeChassisBlueprint"}}],
+                "MiscItems":[{{"ItemCount":1,"ItemType":"{wr}FrostPrimeChassisComponent"}},{{"ItemCount":1,"ItemType":"{wp}BratonPrimeBarrel"}},
+                    {{"ItemCount":1,"ItemType":"{wp}BratonBarrel"}},{{"ItemCount":9,"ItemType":"/Lotus/Types/Items/MiscItems/OrokinCell"}}]}}"#
+        );
+        let data = build(&index, &parse(raw.as_bytes()).unwrap().values);
+        let sets: Vec<(&str, i64)> = data.sets.iter().map(|s| (s.name.as_str(), s.count)).collect();
+        assert_eq!(sets, [("Braton Prime", 0), ("Frost Prime", 2)], "sets with a part held, by name");
+        let frost = &data.sets[1];
+        let parts: Vec<(&str, &str, i64, u32)> =
+            frost.parts.iter().map(|p| (p.path.rsplit('/').next().unwrap(), p.name.as_str(), p.owned, p.needed)).collect();
+        assert_eq!(
+            parts,
+            [
+                ("FrostPrimeBlueprint", "Frost Prime Blueprint", 2, 1),
+                ("FrostPrimeChassisBlueprint", "Frost Prime Chassis Blueprint", 3, 1),
+            ],
+            "traded as blueprints; no Orokin Cells"
+        );
+        assert_eq!((frost.image.as_deref(), frost.overlay.as_deref(), frost.vaulted), (Some(BLUEPRINT_IMAGE), Some("frost.png"), true));
+        assert_eq!((data.sets[0].parts[0].owned, data.sets[0].parts[0].needed), (1, 2));
     }
 
     #[test]

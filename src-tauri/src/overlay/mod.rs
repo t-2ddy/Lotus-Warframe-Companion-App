@@ -1242,11 +1242,7 @@ impl Controller {
                         }
                         // Read straight after the cycle, the card may still be fading in: take it
                         // once it's whole and works out (or after a few tries).
-                        // A name that doesn't read as the weapon ("Bucslc, idaata") means it's still
-                        // fading in, numbers included.
-                        let named = card::weapon_path(&rivens::data(), &card, None).is_some();
-                        let whole = named && card.mastery.is_some() && card.lost_numbers == 0 && panel.status == "ready";
-                        if !whole && attempts < 8 {
+                        if !Self::whole_read(&card, &panel) && attempts < 8 {
                             (RerollStep::ReadingNew { attempts: attempts + 1 }, false)
                         } else {
                             olog!("reroll: new {} ({})", card.title, panel.status);
@@ -1262,17 +1258,30 @@ impl Controller {
                     None => (RerollStep::ReadingNew { attempts: attempts + 1 }, false),
                 }
             }
+            // After choosing between the old and new roll (the same dialog either way), the
+            // centred card is the one kept: read it afresh as the current riven every time.
             RerollStep::ReadingKept { attempts } => match self.read(REROLL_CENTRE) {
                 Some(card) => {
-                    // The centred card is the one kept.
-                    if let Some(mut kept) = new.take().filter(|n| n.card.same_as(&card)) {
-                        kept.panel.side = "left";
-                        kept.panel.role = "Current";
-                        old = Some(kept);
+                    let types = self.reroll_types(&card, riven_type.as_deref(), weapon.as_deref());
+                    let mut panel = self.identify(&card, &types, weapon.as_deref(), shown_rank, "left", "Current", false);
+                    if let (Some(r), Some(v)) = (own_rank, panel.riven.as_mut()) {
+                        v.rank = r;
                     }
-                    (RerollStep::Watching, true)
+                    if !Self::whole_read(&card, &panel) && attempts < 8 {
+                        (RerollStep::ReadingKept { attempts: attempts + 1 }, false)
+                    } else {
+                        olog!("reroll: kept {} ({})", card.title, panel.status);
+                        if let Some(v) = &panel.riven {
+                            riven_type = Some(v.item_type.rsplit('/').next().unwrap_or_default().to_string());
+                        }
+                        old = Some(Found { card, panel });
+                        new = None;
+                        (RerollStep::Watching, true)
+                    }
                 }
                 None if attempts >= 12 => {
+                    // Which roll was kept is unknown: leave the old panel, drop the new one.
+                    olog!("reroll: couldn't read the kept riven");
                     new = None;
                     (RerollStep::Watching, true)
                 }
@@ -1285,6 +1294,20 @@ impl Controller {
         let wait = if matches!(next, RerollStep::Watching) { Duration::from_secs(1) } else { Duration::from_millis(250) };
         self.after(wait);
         (Some(Session::Reroll { weapon, riven_type, old, new, step: next }), changed)
+    }
+
+    /// A reroll-screen card read in full: not mid-fade. A name that doesn't read as the weapon
+    /// ("Bucslc, idaata") means the card is still fading in, numbers included. So does a cut-off
+    /// riven name ("Boar crt", 2026-10-24): every riven's name spells out at least two buffs.
+    fn whole_read(card: &Card, panel: &Panel) -> bool {
+        let data = rivens::data();
+        let named = card::weapon_path(&data, card, None).is_some();
+        let spelled = panel
+            .riven
+            .as_ref()
+            .and_then(|v| data.types.get(v.item_type.rsplit('/').next()?))
+            .is_some_and(|kind| card::name_tags(kind, card.riven_name()).len() >= 2);
+        named && spelled && card.mastery.is_some() && card.lost_numbers == 0 && panel.status == "ready"
     }
 
     fn rewards_step(&mut self, mut r: RewardsSession) -> (Option<Session>, bool) {

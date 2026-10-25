@@ -13,6 +13,11 @@
 //! every check; the last good copy is kept in `riven-data/wiki-dispositions.json`. Weapons the
 //! export doesn't have yet (Corufell Prime, October 2026) come from the wiki too, as their
 //! family's riven weapon.
+//!
+//! Public Export Plus also lags DE's own Public Export for riven stats (October 2026: the spliced
+//! traits, Zoom on shotgun rivens), so DE's `ExportUpgrades_en.json` is checked too and any riven
+//! stat Public Export Plus lacks is added from it. DE's index (LZMA) names each file by its
+//! content hash, which stands in for an ETag.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -28,7 +33,9 @@ use crate::rivens::{self, RivenData};
 
 const BASE_URL: &str = "https://cdn.jsdelivr.net/gh/calamity-inc/warframe-public-export-plus@senpai/";
 const FILES: [&str; 3] = ["ExportUpgrades.json", "ExportWeapons.json", "dict.en.json"];
-const SOURCE: &str = "Warframe Public Export Plus (calamity-inc/warframe-public-export-plus); dispositions from the Warframe wiki (Module:Weapons/data, CC BY-SA 3.0); formulas from calamity-inc/warframe-riven-info";
+const SOURCE: &str = "Warframe Public Export Plus (calamity-inc/warframe-public-export-plus); newer riven stats from DE's Public Export; dispositions from the Warframe wiki (Module:Weapons/data, CC BY-SA 3.0); formulas from calamity-inc/warframe-riven-info";
+const DE_URL: &str = "https://content.warframe.com/PublicExport/";
+const DE_UPGRADES: &str = "ExportUpgrades_en.json";
 /// The wiki's weapon modules with riven weapons.
 const WIKI_URL: &str = "https://wiki.warframe.com/w/Module:Weapons/data/";
 const WIKI_PAGES: [&str; 6] = ["primary", "secondary", "melee", "archwing", "companion", "modular"];
@@ -105,7 +112,9 @@ pub fn start(app: &AppHandle) {
     let checked_at = checked_at(&dir);
     *STATUS.lock().unwrap() =
         Some(DataStatus { state: "idle", built: rivens::data().built.clone(), source, checked_at, error: None });
-    let stale = checked_at.is_none_or(|t| now_ms() - t > MAX_AGE.as_millis() as i64);
+    // Data built before DE's export was read misses its stats: check at once.
+    let stale = checked_at.is_none_or(|t| now_ms() - t > MAX_AGE.as_millis() as i64)
+        || !dir.join("export").join(DE_UPGRADES).exists();
     if stale {
         std::thread::spawn(refresh);
     }
@@ -206,6 +215,11 @@ fn update(dir: &Path) -> Result<Option<Vec<String>>, String> {
         };
         changed = true;
     }
+    // DE's riven stats; on failure, the last good copy (Public Export Plus's stats still work).
+    match fetch_de_upgrades(dir, &mut etags) {
+        Ok(fresh) => changed |= fresh,
+        Err(e) => eprintln!("[rivens] DE's export: {e}"),
+    }
     let _ = std::fs::write(&etags_path, serde_json::to_string(&etags).unwrap_or_default());
 
     // The wiki's dispositions; on failure, the last good copy (the export's values still work).
@@ -233,7 +247,8 @@ fn update(dir: &Path) -> Result<Option<Vec<String>>, String> {
         let text = std::fs::read_to_string(dir.join("export").join(f)).map_err(|e| format!("{f}: {e}"))?;
         serde_json::from_str(&text).map_err(|e| format!("{f}: {e}"))
     };
-    let built = build_data(&read(FILES[0])?, &read(FILES[1])?, &read(FILES[2])?, &dispositions, &today());
+    let de = std::fs::read(dir.join("export").join(DE_UPGRADES)).ok().and_then(|b| de_rivens(&b));
+    let built = build_data(&read(FILES[0])?, &read(FILES[1])?, &read(FILES[2])?, de.as_ref(), &dispositions, &today());
     let text = serde_json::to_string(&built).map_err(|e| e.to_string())?;
     let new = rivens::parse_data(&text)?;
     if new.types.len() < 7 || new.weapons.len() < 300 {
@@ -269,6 +284,58 @@ pub fn differences(old: &RivenData, new: &RivenData) -> Vec<String> {
     }
     out.sort();
     out
+}
+
+/// Downloads DE's `ExportUpgrades_en.json` if its name in DE's index changed. `Ok(true)` when a
+/// new copy was saved.
+fn fetch_de_upgrades(dir: &Path, etags: &mut HashMap<String, String>) -> Result<bool, String> {
+    let get = |url: String, limit: u64| -> Result<Vec<u8>, String> {
+        let mut response = crate::net::agent().get(&url).call().map_err(|e| e.to_string())?;
+        response.body_mut().with_config().limit(limit).read_to_vec().map_err(|e| e.to_string())
+    };
+    let packed = get(format!("{DE_URL}index_en.txt.lzma"), 1024 * 1024)?;
+    let name = de_index_entry(&packed, DE_UPGRADES).ok_or_else(|| format!("no {DE_UPGRADES} in DE's index"))?;
+    let path = dir.join("export").join(DE_UPGRADES);
+    if path.exists() && etags.get(DE_UPGRADES) == Some(&name) {
+        return Ok(false);
+    }
+    let bytes = get(format!("{DE_URL}Manifest/{name}"), 64 * 1024 * 1024)?;
+    if de_rivens(&bytes).is_none_or(|r| r.as_object().is_none_or(Map::is_empty)) {
+        return Err(format!("{DE_UPGRADES} has no rivens"));
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, &bytes).and_then(|_| std::fs::rename(&tmp, &path)).map_err(|e| e.to_string())?;
+    etags.insert(DE_UPGRADES.to_string(), name);
+    Ok(true)
+}
+
+/// A file's name in DE's index (`ExportUpgrades_en.json!00_iIR9…`): LZMA with the size in its
+/// header and no end marker.
+fn de_index_entry(packed: &[u8], file: &str) -> Option<String> {
+    let mut index = Vec::new();
+    lzma_rs::lzma_decompress(&mut std::io::Cursor::new(packed), &mut index).ok()?;
+    let index = String::from_utf8_lossy(&index);
+    index.lines().map(str::trim).find(|l| l.strip_prefix(file).is_some_and(|rest| rest.starts_with('!'))).map(String::from)
+}
+
+/// Riven path → DE's entry for it. The file has raw line breaks and tabs inside strings, which
+/// JSON doesn't allow; they're spaces in the text anyway.
+fn de_rivens(bytes: &[u8]) -> Option<Value> {
+    let clean: Vec<u8> = bytes.iter().map(|b| if matches!(b, b'\r' | b'\n' | b'\t') { b' ' } else { *b }).collect();
+    let file: Value = serde_json::from_slice(&clean).ok()?;
+    let rivens = file
+        .get("ExportUpgrades")?
+        .as_array()?
+        .iter()
+        .filter_map(|e| Some((e.get("uniqueName")?.as_str()?.to_string(), e.clone())))
+        .filter(|(path, _)| path.starts_with(PREFIX))
+        .collect();
+    Some(Value::Object(rivens))
+}
+
+/// DE's float32 values (0.0099999998) in Public Export Plus's spelling (0.01): 7 significant digits.
+fn single(v: f64) -> f64 {
+    format!("{v:.6e}").parse().unwrap_or(v)
 }
 
 /// Downloads the wiki's weapon modules: weapon path → what the wiki says about it.
@@ -334,12 +401,13 @@ fn settled(found: HashMap<String, Vec<WikiWeapon>>) -> BTreeMap<String, WikiWeap
 }
 
 /// Builds the riven data from the three export files, as `scripts/gen_rivens.py` does, with
-/// the wiki's dispositions replacing the export's, and weapons only the wiki has added as their
-/// family's riven weapon.
+/// riven stats only DE's export (`de`, from [`de_rivens`]) has added, the wiki's dispositions
+/// replacing the export's, and weapons only the wiki has added as their family's riven weapon.
 pub fn build_data(
     upgrades: &Value,
     weapons: &Value,
     words: &Value,
+    de: Option<&Value>,
     dispositions: &BTreeMap<String, WikiWeapon>,
     built: &str,
 ) -> Value {
@@ -368,6 +436,22 @@ pub fn build_data(
                     "prefix": text(e.get("prefixTag")).unwrap_or_default(),
                     "suffix": text(e.get("suffixTag")).unwrap_or_default(),
                     "label": loc.map_or_else(|| tag.to_string(), |l| clean_label(&l)),
+                }),
+            );
+        }
+        // Stats only DE's export has yet; its text is already in English.
+        let de_entries = de.and_then(|d| d.get(path)).and_then(|e| e.get("upgradeEntries")).and_then(Value::as_array);
+        for e in de_entries.into_iter().flatten() {
+            let Some(tag) = e.get("tag").and_then(Value::as_str).filter(|t| !stats.contains_key(*t)) else { continue };
+            let first = e.get("upgradeValues").and_then(Value::as_array).and_then(|v| v.first());
+            let word = |key: &str| e.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+            stats.insert(
+                tag.to_string(),
+                json!({
+                    "value": single(first.and_then(|v| v.get("value")).and_then(Value::as_f64).unwrap_or(0.0)),
+                    "prefix": word("prefixTag"),
+                    "suffix": word("suffixTag"),
+                    "label": clean_label(first.and_then(|v| v.get("locTag")).and_then(Value::as_str).unwrap_or(tag)),
                 }),
             );
         }
@@ -500,7 +584,7 @@ mod tests {
     #[test]
     fn builds_the_bundled_format() {
         let (u, w, d) = fixture();
-        let built = build_data(&u, &w, &d, &BTreeMap::new(), "2026-10-09");
+        let built = build_data(&u, &w, &d, None, &BTreeMap::new(), "2026-10-09");
         let data = rivens::parse_data(&built.to_string()).unwrap();
         assert_eq!(data.built, "2026-10-09");
         let heat = &data.types["LotusRifleRandomModRare"].stats["WeaponFireDamageMod"];
@@ -514,12 +598,51 @@ mod tests {
     }
 
     #[test]
+    fn des_export_adds_the_stats_public_export_plus_lacks() {
+        // As DE ships it: one list, English text, float32 values, a line break inside a string.
+        let de = b"{\"ExportUpgrades\":[{\"uniqueName\":\"/Lotus/Upgrades/Mods/Randomized/LotusRifleRandomModRare\",
+            \"description\":[\"two\nlines\"],\"upgradeEntries\":[
+            {\"tag\":\"WeaponFireDamageMod\",\"prefixTag\":\"other\",\"suffixTag\":\"other\",\"upgradeValues\":[{\"value\":0.0099999998,\"locTag\":\"|val|% <DT_FIRE_COLOR>Hot\"}]},
+            {\"tag\":\"WeaponGasDamageMod\",\"prefixTag\":\"cali\",\"suffixTag\":\"fel\",\"upgradeValues\":[{\"value\":0.0099999998,\"locTag\":\"|val|% <DT_GAS_COLOR>Gas\"}]},
+            {\"tag\":\"WeaponZoomFovMod\",\"prefixTag\":\"hera\",\"suffixTag\":\"lis\",\"upgradeValues\":[{\"value\":0.0046660001,\"locTag\":\"|val|% Zoom\"}]}]},
+            {\"uniqueName\":\"/Lotus/Upgrades/Mods/Other\",\"upgradeEntries\":[]}]}";
+        let de = de_rivens(de).expect("parses despite the line break");
+        assert_eq!(de.as_object().unwrap().len(), 1, "rivens only");
+        let (u, w, d) = fixture();
+        let data = rivens::parse_data(&build_data(&u, &w, &d, Some(&de), &BTreeMap::new(), "a").to_string()).unwrap();
+        let stats = &data.types["LotusRifleRandomModRare"].stats;
+        let heat = &stats["WeaponFireDamageMod"];
+        assert_eq!((heat.label.as_str(), heat.prefix.as_str()), ("|val|% Heat", "igni"), "Public Export Plus's own stats stay");
+        let gas = &stats["WeaponGasDamageMod"];
+        assert_eq!((gas.label.as_str(), gas.prefix.as_str(), gas.suffix.as_str(), gas.value), ("|val|% Gas", "cali", "fel", 0.01));
+        assert_eq!(stats["WeaponZoomFovMod"].value, 0.004666);
+        assert_eq!(single(-0.0049999999), -0.005);
+    }
+
+    /// DE's index decodes and names the upgrades file. Needs the network.
+    #[test]
+    #[ignore]
+    fn live_des_export() {
+        let dir = std::env::temp_dir().join("wf-companion-de-export-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("export")).unwrap();
+        let mut etags = HashMap::new();
+        assert!(fetch_de_upgrades(&dir, &mut etags).unwrap(), "first fetch saves it");
+        assert!(etags[DE_UPGRADES].starts_with("ExportUpgrades_en.json!"));
+        assert!(!fetch_de_upgrades(&dir, &mut etags).unwrap(), "unchanged the second time");
+        let de = de_rivens(&std::fs::read(dir.join("export").join(DE_UPGRADES)).unwrap()).unwrap();
+        let shotgun = &de["/Lotus/Upgrades/Mods/Randomized/LotusShotgunRandomModRare"]["upgradeEntries"];
+        assert!(shotgun.as_array().unwrap().iter().any(|e| e["tag"] == "WeaponZoomFovMod"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn lists_changed_dispositions() {
         let (u, w, d) = fixture();
-        let old = rivens::parse_data(&build_data(&u, &w, &d, &BTreeMap::new(), "a").to_string()).unwrap();
+        let old = rivens::parse_data(&build_data(&u, &w, &d, None, &BTreeMap::new(), "a").to_string()).unwrap();
         let mut w2 = w.clone();
         w2["/W/LatronPrime"]["omegaAttenuation"] = json!(1.35);
-        let new = rivens::parse_data(&build_data(&u, &w2, &d, &BTreeMap::new(), "b").to_string()).unwrap();
+        let new = rivens::parse_data(&build_data(&u, &w2, &d, None, &BTreeMap::new(), "b").to_string()).unwrap();
         assert_eq!(differences(&old, &new), ["Latron Prime disposition 1.3 → 1.35"]);
     }
 
@@ -533,7 +656,7 @@ mod tests {
         let only: Vec<(&str, f64)> = wiki.iter().map(|(p, w)| (p.as_str(), w.disposition)).collect();
         assert_eq!(only, [("/W/LatronPrime", 1.35)]);
         let (u, w, d) = fixture();
-        let data = rivens::parse_data(&build_data(&u, &w, &d, &wiki, "a").to_string()).unwrap();
+        let data = rivens::parse_data(&build_data(&u, &w, &d, None, &wiki, "a").to_string()).unwrap();
         assert_eq!(data.weapons["/W/LatronPrime"].disposition, 1.35);
         assert_eq!(data.weapons["/W/Latron"].disposition, 1.4, "the export's value without a wiki one");
     }
@@ -550,7 +673,7 @@ mod tests {
             ("/W/Orphan".to_string(), entry(0.9, "Orphan", "Nobody")),
             ("/W/NoRivens".to_string(), entry(1.0, "Latron", "Latron")),
         ]);
-        let data = rivens::parse_data(&build_data(&u, &w, &d, &wiki, "a").to_string()).unwrap();
+        let data = rivens::parse_data(&build_data(&u, &w, &d, None, &wiki, "a").to_string()).unwrap();
         let new = &data.weapons["/W/LatronNew"];
         assert_eq!((new.name.as_str(), new.disposition), ("Latron Newer", 0.5));
         assert_eq!((new.kind.as_deref(), new.base.as_deref()), (Some("LotusRifleRandomModRare"), Some("/W/Latron")));
@@ -589,7 +712,10 @@ mod tests {
         assert!(first.is_some(), "first run builds the data");
         assert!(dir.join("rivens.json").exists());
         let etags = std::fs::read_to_string(dir.join("etags.json")).unwrap();
-        assert!(etags.contains("dict.en.json"), "{etags}");
+        assert!(etags.contains("dict.en.json") && etags.contains(DE_UPGRADES), "{etags}");
+        let built = rivens::parse_data(&std::fs::read_to_string(dir.join("rivens.json")).unwrap()).unwrap();
+        let shotgun = &built.types["LotusShotgunRandomModRare"].stats;
+        assert!(shotgun.contains_key("WeaponZoomFovMod") && shotgun.contains_key("WeaponGasDamageMod"), "DE's stats are in");
         assert_eq!(update(&dir).unwrap(), None, "nothing changed the second time");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -604,7 +730,8 @@ mod tests {
         let read = |f: &str| serde_json::from_str::<Value>(&std::fs::read_to_string(dir.join(f)).unwrap()).unwrap();
         let bundled: Value = serde_json::from_str(include_str!("../data/rivens.json")).unwrap();
         let wiki: BTreeMap<String, WikiWeapon> = serde_json::from_str(&std::fs::read_to_string(dir.join(WIKI_CACHE)).unwrap()).unwrap();
-        let built = build_data(&read(FILES[0]), &read(FILES[1]), &read(FILES[2]), &wiki, bundled["built"].as_str().unwrap());
+        let de = std::fs::read(dir.join(DE_UPGRADES)).ok().and_then(|b| de_rivens(&b));
+        let built = build_data(&read(FILES[0]), &read(FILES[1]), &read(FILES[2]), de.as_ref(), &wiki, bundled["built"].as_str().unwrap());
         assert_eq!(built, bundled);
     }
 }

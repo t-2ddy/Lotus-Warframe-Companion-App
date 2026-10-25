@@ -429,7 +429,7 @@ fn is_junction(tag: &str) -> bool {
 }
 
 /// Farmable resources (Orokin Cells, Neurodes, …) aren't bought on warframe.market.
-fn is_resource(index: &ItemIndex, path: &str) -> bool {
+pub(crate) fn is_resource(index: &ItemIndex, path: &str) -> bool {
     index.get(path).is_some_and(|i| matches!(i.file.as_str(), "Resources" | "Misc" | "Fish" | "Gear"))
 }
 
