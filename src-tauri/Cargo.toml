@@ -1,6 +1,6 @@
 [package]
 name = "wf-companion"
-version = "0.1.12"
+version = "0.1.13"
 description = "Lotus: a Warframe companion app"
 authors = ["Lotus contributors"]
 license = "MIT"

@@ -7,6 +7,12 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.13",
+    fixes: [
+      "Riven Ammo Efficiency shows the right way round: \"+55.5% Ammo Efficiency\" is a positive, on the Rivens page and in the overlay.",
+    ],
+  },
+  {
     version: "0.1.12",
     fixes: [
       "Foundry's Incarnon filter shows every weapon that can get an Incarnon form, with all its variants, not only ones you've already unlocked.",
