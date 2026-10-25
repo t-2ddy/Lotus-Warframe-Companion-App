@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-10-25
+
 ### Changed
 - Right-clicking in Lotus no longer opens the browser menu (Back, Reload, Inspect…); text fields
   keep theirs for cut, copy and paste.
@@ -305,7 +307,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.7...v0.1.8

@@ -7,6 +7,15 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.11",
+    fixes: [
+      "Rivens with spliced stats get a grade again instead of \"Collecting data\".",
+      "Combined elements and weak point stats count as good riven stats; damage to the new factions doesn't.",
+      "Corrosive no longer shows twice (as \"Corro\") in a riven's ideal stats, and Status damage and Slam damage show by name.",
+      "Right-clicking no longer opens the browser menu.",
+    ],
+  },
+  {
     version: "0.1.10",
     fixes: [
       "New Mastery Helper tab, Crafting trees: every item built from other weapons, with what you've mastered along the way.",
