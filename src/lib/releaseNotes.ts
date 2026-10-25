@@ -7,6 +7,18 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.8",
+    fixes: [
+      "The relic rewards overlay works again: the item data Lotus uses had lost every relic's rewards.",
+      "Overlays no longer show twice: only one Lotus runs at a time, and opening it again brings it forward.",
+      "Riven reroll overlay: the riven you keep is read again after every choice, and half-faded cards are read again.",
+      "Riven overlays read a Gas line its icon garbled (\"ecas\") correctly.",
+      "Riven stats are up to date: shotgun rivens roll Zoom again, and spliced traits like Gas and Status Damage are graded.",
+      "Foundry pictures and part circles scale with the window and are the same size on every card.",
+      "New Inventory tab, Prime Sets: sets you own, with set and part prices; click Sets owned or Set price to sort.",
+    ],
+  },
+  {
     version: "0.1.7",
     fixes: [
       "No changes in the app itself: this release fixes a test that sometimes failed during the build.",

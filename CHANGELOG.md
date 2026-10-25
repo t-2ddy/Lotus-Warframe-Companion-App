@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-10-25
+
 ### Added
 - Inventory → Prime Sets: every prime set you hold a part of, shown by its main blueprint, with
   how many complete sets you have and the set's warframe.market price (WTS/WTB). Click a set for
