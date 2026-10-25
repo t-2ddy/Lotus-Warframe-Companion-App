@@ -7,6 +7,14 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.10",
+    fixes: [
+      "New Mastery Helper tab, Crafting trees: every item built from other weapons, with what you've mastered along the way.",
+      "Click one to see its crafting tree, and click any weapon in it for its recipe and where to get it.",
+      "Filter the tab to your favorites or hide what you've already mastered.",
+    ],
+  },
+  {
     version: "0.1.9",
     fixes: [
       "Click a Foundry card to see its full recipe and where to get every part: mission, relic, bounty, enemy, vendor, Dojo lab or Market.",

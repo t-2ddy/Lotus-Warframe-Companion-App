@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-10-25
+
 ### Added
 - Mastery Helper → Crafting trees: a card for every item built from other weapons (Akjagara,
   Hystrix, Twin Vipers, Lesion…) with its XP, level, parts and how much of its tree you've
@@ -288,7 +290,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.6...v0.1.7
