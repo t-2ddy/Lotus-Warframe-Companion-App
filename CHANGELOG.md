@@ -5,6 +5,41 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Added
+- Foundry: click a card for its full recipe and where to get each part. Lists the main
+  blueprint, parts and resources with how many you hold, and what each part's own blueprint
+  takes to build. Every part shows where it comes from: star chart node and mission type
+  (rotations merged), relic (Intact chance), bounty, enemy, vendor (with its location and price),
+  Clan Dojo lab, or the Market. Kuva, Tenet and Coda weapons point to their Lich, Sister or Coda.
+  Places link to their wiki page. Vendors, labs and part recipes come from the Warframe wiki's
+  data modules, cached and refreshed every 2 weeks; drops come from WFCD.
+
+### Changed
+- Inventory → Prime Sets lists only sets you own at least one complete set of; sets you hold
+  just some parts of are gone, along with the Full/Partial filter.
+- Inventory filters: "Available" is now "Unvaulted".
+- The Foundry opens at once: it shows the last list it loaded (kept across visits and restarts)
+  while the fresh one loads, builds the first screenful of cards right away and the rest a batch
+  per frame, and doesn't draw cards off screen until you scroll near them.
+- Foundry cards lift on hover, like the Mastery Helper's and Rivens cards.
+- Foundry filters: Ready to build, Enough mastery, Prime resurgence and Contains archon shards
+  are gone.
+- The Warframe Market tab (still to come) is now Trade Chat, with its own icon.
+- Ducanator filters, clearer: "Show" chips are lit for the part types and rarities listed (click
+  to leave one out) instead of lighting up to hide them. "May still need" is now "Keep for
+  building": checkboxes for unmastered items' parts and nearly finished sets (pick Full, 75%,
+  50% or 25%), with "…but still list spare copies" under them. It's greyed out when no keep rule
+  is on. The line below reads "Showing N of M". Saved filter choices carry over.
+
+### Fixed
+- Dual weapons (Akbronco, Twin Vipers, Dual Kamas and 13 more) listed their single weapon as two
+  parts, each "owned" by the same copy, so one Bronco looked like a full Akbronco set. It's now
+  one part needed twice.
+- MOAs, Hounds, Predasites and Vulpaphylas showed as mastered after one trip to rank 30. They
+  give mastery only once gilded (level to 30, gild back to 0, level to 30 again), so an ungilded
+  copy's XP no longer counts. Mastery Helper → Easy notes how many more times each must be maxed
+  ("Max it 2×: gild after the first", or "Gild it, then max it 1× more").
+
 ## [0.1.8] — 2026-10-25
 
 ### Added

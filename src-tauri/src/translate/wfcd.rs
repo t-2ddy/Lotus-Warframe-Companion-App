@@ -181,6 +181,48 @@ struct RawItem {
     rewards: Vec<RawReward>,
     #[serde(default)]
     components: Vec<RawComponent>,
+    #[serde(default)]
+    drops: Vec<RawDrop>,
+    #[serde(default)]
+    build_price: Option<f64>,
+    #[serde(default)]
+    build_time: Option<f64>,
+    #[serde(default)]
+    build_quantity: Option<f64>,
+    #[serde(default)]
+    market_cost: Option<f64>,
+    #[serde(default)]
+    bp_cost: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawDrop {
+    #[serde(default)]
+    location: String,
+    #[serde(default)]
+    chance: Option<f64>,
+}
+
+/// One place an item drops, as WFCD lists it: "Europa/Naamah (Assassination)",
+/// "Lith S8 Relic (Intact)", "Ostron (Hok), Neutral", "Captain Vor".
+#[derive(Debug, Clone, PartialEq)]
+pub struct Drop {
+    pub location: String,
+    /// Chance in percent.
+    pub chance: f64,
+}
+
+/// Foundry cost of building an item, and what the Market asks.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Build {
+    pub credits: i64,
+    /// Seconds.
+    pub time: i64,
+    pub quantity: i64,
+    /// Platinum for the built item in the Market.
+    pub market_cost: Option<i64>,
+    /// Credits for its blueprint in the Market.
+    pub bp_cost: Option<i64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -283,6 +325,10 @@ pub struct ItemIndex {
     frame_codenames: HashMap<String, String>,
     /// Lowercase item name → path, preferring whole items over components with the same name.
     by_name: HashMap<String, String>,
+    /// Where each part or resource drops (WFCD `drops`).
+    drops: HashMap<String, Vec<Drop>>,
+    /// Foundry and Market costs of items that are built.
+    builds: HashMap<String, Build>,
 }
 
 /// The image every blueprint shares in WFCD.
@@ -403,6 +449,8 @@ impl ItemIndex {
         // Every relic WFCD lists (name without refinement), with rewards or not.
         let mut relic_bases: HashSet<String> = HashSet::new();
         let mut drops: Option<RelicTables> = None;
+        let mut item_drops: HashMap<String, Vec<Drop>> = HashMap::new();
+        let mut builds: HashMap<String, Build> = HashMap::new();
 
         for (category, bytes) in files {
             if category == DROPS {
@@ -417,6 +465,7 @@ impl ItemIndex {
                 if item.unique_name.is_empty() {
                     continue;
                 }
+                keep_sources(&item, &mut item_drops, &mut builds);
                 if category == "Components" {
                     components.push(item);
                     continue;
@@ -468,15 +517,7 @@ impl ItemIndex {
                             mastery_req: item.mastery_req.map_or(0, |m| m as u32),
                             is_prime: item.is_prime.unwrap_or(false),
                             vaulted: item.vaulted.unwrap_or(false),
-                            parts: item
-                                .components
-                                .iter()
-                                .filter(|c| !c.unique_name.is_empty())
-                                .map(|c| Part {
-                                    path: c.unique_name.clone(),
-                                    count: c.item_count.map_or(1, |n| n.max(1.0) as u32),
-                                })
-                                .collect(),
+                            parts: merge_parts(&item.components),
                         });
                     }
                 }
@@ -595,7 +636,17 @@ impl ItemIndex {
         }
 
         let parent_file = parent_of.into_iter().map(|(path, (_, file))| (path, file)).collect();
-        Self { items, masterables, used_in_crafting, parent_file, relic_rewards, frame_codenames, by_name }
+        Self {
+            items,
+            masterables,
+            used_in_crafting,
+            parent_file,
+            relic_rewards,
+            frame_codenames,
+            by_name,
+            drops: item_drops,
+            builds,
+        }
     }
 
     /// For a blueprint, the image of what it builds, to draw over the generic blueprint picture.
@@ -670,6 +721,21 @@ impl ItemIndex {
         self.items.len()
     }
 
+    /// Where a part or resource drops, as WFCD lists it.
+    pub fn drops(&self, path: &str) -> &[Drop] {
+        self.drops.get(path).map_or(&[], Vec::as_slice)
+    }
+
+    /// Foundry and Market costs of a built item.
+    pub fn build_of(&self, path: &str) -> Option<&Build> {
+        self.builds.get(path)
+    }
+
+    /// The path of an item by its name ("Orokin Cell"), any case.
+    pub fn path_by_name(&self, name: &str) -> Option<&str> {
+        self.by_name.get(&name.to_lowercase()).map(String::as_str)
+    }
+
     /// Every item that gives mastery, in WFCD file order.
     pub fn masterables(&self) -> &[Masterable] {
         &self.masterables
@@ -691,6 +757,43 @@ impl ItemIndex {
             return info.name.clone();
         }
         self.frame_blueprint_name(path).unwrap_or_else(|| fallback_name(path))
+    }
+}
+
+/// An item's build parts, one entry per path. WFCD lists a dual weapon's single weapon twice
+/// (Akbronco: Bronco, Bronco), which is one part needed twice.
+fn merge_parts(components: &[RawComponent]) -> Vec<Part> {
+    let mut parts: Vec<Part> = Vec::new();
+    for c in components.iter().filter(|c| !c.unique_name.is_empty()) {
+        let count = c.item_count.map_or(1, |n| n.max(1.0) as u32);
+        match parts.iter_mut().find(|p| p.path == c.unique_name) {
+            Some(p) => p.count += count,
+            None => parts.push(Part { path: c.unique_name.clone(), count }),
+        }
+    }
+    parts
+}
+
+/// Keeps an item's drop list and build costs (the first listing wins, as for `items`).
+fn keep_sources(item: &RawItem, drops: &mut HashMap<String, Vec<Drop>>, builds: &mut HashMap<String, Build>) {
+    if !item.drops.is_empty() && !drops.contains_key(&item.unique_name) {
+        // WFCD's text has a broken "ö" in Höllvania.
+        let list = item
+            .drops
+            .iter()
+            .filter(|d| !d.location.is_empty())
+            .map(|d| Drop { location: d.location.replace("H\u{FFFD}llvania", "Höllvania"), chance: d.chance.unwrap_or(0.0) })
+            .collect();
+        drops.insert(item.unique_name.clone(), list);
+    }
+    if item.build_price.is_some() || item.market_cost.is_some() {
+        builds.entry(item.unique_name.clone()).or_insert_with(|| Build {
+            credits: item.build_price.unwrap_or(0.0) as i64,
+            time: item.build_time.unwrap_or(0.0) as i64,
+            quantity: item.build_quantity.unwrap_or(1.0) as i64,
+            market_cost: item.market_cost.filter(|c| *c > 0.0).map(|c| c as i64),
+            bp_cost: item.bp_cost.filter(|c| *c > 0.0).map(|c| c as i64),
+        });
     }
 }
 
@@ -882,6 +985,15 @@ mod tests {
         assert_eq!(barrel.ducats, Some(15));
         assert!(barrel.tradable);
         assert_eq!(index.display_name("/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint"), "Braton Prime Blueprint");
+    }
+
+    #[test]
+    fn dual_weapons_need_their_single_twice() {
+        let secondary = br#"[{"uniqueName":"/W/Akbronco","name":"Akbronco","masterable":true,
+            "components":[{"uniqueName":"/W/AkbroncoBlueprint"},{"uniqueName":"/W/Bronco","itemCount":1},{"uniqueName":"/W/Bronco","itemCount":1}]}]"#;
+        let index = ItemIndex::build(&[("Secondary".into(), secondary.to_vec())]);
+        let parts: Vec<(&str, u32)> = index.masterables()[0].parts.iter().map(|p| (p.path.as_str(), p.count)).collect();
+        assert_eq!(parts, [("/W/AkbroncoBlueprint", 1), ("/W/Bronco", 2)]);
     }
 
     #[test]

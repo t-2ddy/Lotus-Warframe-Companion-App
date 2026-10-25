@@ -30,6 +30,8 @@
     relicNeeds: RelicNeed[];
     /** Easy: owned, building, ready (build it now) or set (every part held, some to craft). */
     stage: "owned" | "building" | "ready" | "set" | "";
+    /** MOAs, Hounds, Predasites, Vulpaphylas: times still to reach max rank (gilding in between); 0 = no note. */
+    maxesLeft: number;
   };
   type RelicNeed = {
     path: string;
@@ -433,6 +435,15 @@
                 {:else if s.stage === "set"}<span class="chip building" title="You have every part; some are still blueprints to craft, or resources are short">Full set</span>
                 {:else}<span class="chip owned">Inventory</span>{/if}
               </div>
+              {#if s.maxesLeft === 2}
+                <div class="sources gild-note" title="Gives mastery only once gilded: level to {s.maxRank}, gild (back to 0), then level to {s.maxRank} again">
+                  Max it 2×: gild after the first
+                </div>
+              {:else if s.maxesLeft === 1}
+                <div class="sources gild-note" title="Already at max rank once: gild it (back to 0), then level to {s.maxRank} again for the mastery">
+                  Gild it, then max it 1× more
+                </div>
+              {/if}
             {:else if mode === "relics"}
               <div class="detail">
                 <span class="set-count"><b>{s.relicPartsOwned}</b>/{s.relicPartsTotal} relic parts</span>
@@ -1372,6 +1383,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .gild-note {
+    color: var(--accent);
   }
 
   .price {

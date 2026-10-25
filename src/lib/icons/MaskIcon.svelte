@@ -1,6 +1,6 @@
 <script lang="ts">
   // A picture used as a one-colour icon in `currentColor` (CSS mask), sized like the Lucide icons
-  // beside it: the mastered wreath for Mastery Helper, warframe.market's logo for Warframe Market.
+  // beside it: the Foundry picture, the mastered wreath for Mastery Helper.
   let {
     src,
     size = 24,

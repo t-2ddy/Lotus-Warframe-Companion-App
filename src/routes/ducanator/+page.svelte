@@ -4,7 +4,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { hideOnError, imageUrl, markMissing, time } from "$lib/format";
-  import EyeOff from "@lucide/svelte/icons/eye-off";
+  import Check from "@lucide/svelte/icons/check";
 
   type Row = {
     path: string;
@@ -47,20 +47,21 @@
   let view = $state<"owned" | "all">("owned");
   let search = $state("");
 
-  // "Hide" filters, in three groups. A selected chip hides that group of parts.
+  // Filters. "Show" chips list a group of parts (all on by default); "Keep for building" rules
+  // leave out parts you may still build with. Saved as what's hidden, as before.
   type Hide = "warframe" | "weapon" | "companion" | "notMastered" | "gold" | "silver" | "bronze";
   type Chip = { key: Hide; label: string; title: string };
   const PART_TYPES: Chip[] = [
-    { key: "warframe", label: "Warframe", title: "Hide warframe blueprints and parts" },
-    { key: "weapon", label: "Weapon", title: "Hide weapon blueprints and parts" },
-    { key: "companion", label: "Companion", title: "Hide sentinel blueprints and parts, and the Kavasa Kubrow collar" },
+    { key: "warframe", label: "Warframe", title: "Warframe blueprints and parts. Click to show or hide" },
+    { key: "weapon", label: "Weapon", title: "Weapon blueprints and parts. Click to show or hide" },
+    { key: "companion", label: "Companion", title: "Sentinel blueprints and parts, and the Kavasa Kubrow collar. Click to show or hide" },
   ];
   const RARITIES: (Chip & { ducats: string })[] = [
-    { key: "bronze", label: "Bronze", ducats: "15–25", title: "Hide common relic parts (15 or 25 ducats)" },
-    { key: "silver", label: "Silver", ducats: "45–65", title: "Hide uncommon relic parts (45 or 65 ducats)" },
-    { key: "gold", label: "Gold", ducats: "100", title: "Hide rare relic parts (100 ducats)" },
+    { key: "bronze", label: "Bronze", ducats: "15–25", title: "Common relic parts (15 or 25 ducats). Click to show or hide" },
+    { key: "silver", label: "Silver", ducats: "45–65", title: "Uncommon relic parts (45 or 65 ducats). Click to show or hide" },
+    { key: "gold", label: "Gold", ducats: "100", title: "Rare relic parts (100 ducats). Click to show or hide" },
   ];
-  /** Hide parts of sets you own at least this share of (one choice, or none). */
+  /** Leave out parts of sets you own at least this share of (one choice, or none). */
   const SET_SHARES = [100, 75, 50, 25];
   const HIDE_KEY = "ducanator.hide";
   /** `keepDupes` ("Still show spare copies"): the "may still need" filters keep parts you have
@@ -99,10 +100,19 @@
     hide.keepDupes = !hide.keepDupes;
     saveHide();
   }
-  function toggleSetShare(share: number) {
-    hide.setShare = hide.setShare === share ? null : share;
+  /** The threshold the set rule uses when it's turned back on. */
+  let lastShare = hide.setShare ?? 100;
+  function toggleSetRule() {
+    hide.setShare = hide.setShare === null ? lastShare : null;
     saveHide();
   }
+  /** Picking a threshold also turns the set rule on. */
+  function chooseSetShare(share: number) {
+    hide.setShare = lastShare = share;
+    saveHide();
+  }
+  /** A "keep" rule is on, so "still list spare copies" matters. */
+  const keepRules = $derived(hide.notMastered || hide.setShare !== null);
   function clearFilters() {
     Object.assign(hide, DEFAULT_HIDE);
     saveHide();
@@ -222,70 +232,74 @@
   </div>
 </div>
 
-{#snippet chip(selected: boolean, title: string, onclick: () => void, label: string, note?: string)}
-  <button class="chip" class:selected aria-pressed={selected} {title} {onclick}>
-    {#if selected}<EyeOff size={14} strokeWidth={2} aria-hidden="true" />{/if}
+{#snippet chip(on: boolean, title: string, onclick: () => void, label: string, note?: string)}
+  <button class="chip" class:on aria-pressed={on} {title} {onclick}>
+    <span class="tick" aria-hidden="true">{#if on}<Check size={14} strokeWidth={2.5} />{/if}</span>
     {label}{#if note}<span class="note">{note}</span>{/if}
   </button>
 {/snippet}
 
-<section class="filters" aria-label="Hide parts">
-  <h2 class="filter-label">Hide</h2>
-  <div class="filter-row">
-    <span class="row-label">Part type</span>
-    <div class="chip-group">
-      {#each PART_TYPES as c (c.key)}
-        {@render chip(hide[c.key], c.title, () => toggleHide(c.key), c.label)}
-      {/each}
-    </div>
-  </div>
-  <div class="filter-row">
-    <span class="row-label">Rarity</span>
-    <div class="chip-group">
-      {#each RARITIES as c (c.key)}
-        {@render chip(hide[c.key], c.title, () => toggleHide(c.key), c.label, c.ducats)}
-      {/each}
-    </div>
-  </div>
-  <div class="filter-row">
-    <span class="row-label">May still need</span>
-    <div class="need">
+<section class="filters" aria-label="Filters">
+  <div class="group">
+    <h2 class="filter-label">Show</h2>
+    <div class="filter-row">
+      <span class="row-label">Type</span>
       <div class="chip-group">
-        {@render chip(
-          hide.notMastered,
-          "Hide parts of items you haven't mastered yet (keep them to build and level)",
-          () => toggleHide("notMastered"),
-          "For unmastered items",
-        )}
-      </div>
-      <div class="chip-group">
-        <span class="inline-label">From sets I own ≥</span>
-        {#each SET_SHARES as share}
-          {@render chip(
-            hide.setShare === share,
-            share === 100
-              ? "Hide parts of sets you already have every part of"
-              : `Hide parts of sets you already have ${share}% or more of`,
-            () => toggleSetShare(share),
-            share === 100 ? "Full" : `${share}%`,
-          )}
+        {#each PART_TYPES as c (c.key)}
+          {@render chip(!hide[c.key], c.title, () => toggleHide(c.key), c.label)}
         {/each}
       </div>
-      <label class="switch-row" title="Copies beyond what the set needs are safe to sell, so these two filters leave them listed">
-        <input type="checkbox" checked={hide.keepDupes} onchange={toggleKeepDupes} />
-        <span class="track"><span class="knob"></span></span>
-        Still show spare copies <span class="muted">(beyond what the set needs)</span>
-      </label>
+    </div>
+    <div class="filter-row">
+      <span class="row-label">Rarity</span>
+      <div class="chip-group">
+        {#each RARITIES as c (c.key)}
+          {@render chip(!hide[c.key], c.title, () => toggleHide(c.key), c.label, c.ducats)}
+        {/each}
+      </div>
     </div>
   </div>
+
+  <div class="group">
+    <h2 class="filter-label">Keep for building <span class="hint">· left out of the list</span></h2>
+    <label class="check" title="Parts of items you haven't mastered yet: keep them to build and level">
+      <input type="checkbox" checked={hide.notMastered} onchange={() => toggleHide("notMastered")} />
+      Parts for items I haven't mastered
+    </label>
+    <label class="check" title="Parts of sets you've already collected most of">
+      <input type="checkbox" checked={hide.setShare !== null} onchange={toggleSetRule} />
+      Parts of sets I've nearly finished
+    </label>
+    <div class="sub" class:off={hide.setShare === null}>
+      <span class="inline-label">at least</span>
+      <div class="segmented" role="radiogroup" aria-label="Set progress">
+        {#each SET_SHARES as share}
+          <button
+            role="radio"
+            aria-checked={hide.setShare === share}
+            class:selected={hide.setShare === share}
+            title={share === 100 ? "Sets you have every part of" : `Sets you have ${share}% or more of`}
+            onclick={() => chooseSetShare(share)}
+          >
+            {share === 100 ? "Full" : `${share}%`}
+          </button>
+        {/each}
+      </div>
+    </div>
+    <label
+      class="check sub"
+      class:off={!keepRules}
+      title="Copies beyond what the set needs are safe to sell, so the rules above leave them listed"
+    >
+      <input type="checkbox" checked={hide.keepDupes} onchange={toggleKeepDupes} disabled={!keepRules} />
+      …but still list spare copies <span class="muted">(beyond what the set needs)</span>
+    </label>
+  </div>
+
   <p class="hiding muted">
-    {#if hiddenCount > 0}
-      Hiding {hiddenCount.toLocaleString()} of {beforeFilters.length.toLocaleString()}
-      {view === "owned" ? "owned parts" : "parts"}
-    {:else}
-      Nothing hidden
-    {/if}
-    {#if filtersSet}· <button class="link" onclick={clearFilters}>Clear filters</button>{/if}
+    Showing {(beforeFilters.length - hiddenCount).toLocaleString()} of {beforeFilters.length.toLocaleString()}
+    {view === "owned" ? "owned parts" : "parts"}
+    {#if filtersSet}· <button class="link" onclick={clearFilters}>Reset filters</button>{/if}
   </p>
 </section>
 
@@ -422,19 +436,37 @@
     font-weight: 600;
   }
 
-  /* Hide filters: three labelled rows in one box. */
+  /* Filters: "Show" with one row of chips per category, "Keep for building" from the middle;
+     they stack when the window is too narrow for both. */
   .filters {
     margin: 4px 0 10px;
-    padding: 10px 14px;
+    padding: 12px 16px;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 48px;
+  }
+
+  .group {
     display: grid;
+    align-content: start;
     gap: 8px;
   }
 
+  /* Show fills the left half (never narrower than its chips), so Keep starts around the middle. */
+  .group:first-child {
+    flex: 0 0 calc(50% - 24px);
+    min-width: max-content;
+  }
+
+  .group:first-child .chip-group {
+    flex-wrap: nowrap;
+  }
+
   .filter-label {
-    margin: 0;
+    margin: 0 0 2px;
     font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
@@ -442,15 +474,20 @@
     color: var(--muted);
   }
 
+  .filter-label .hint {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
   .filter-row {
     display: grid;
-    grid-template-columns: 130px 1fr;
-    align-items: start;
-    gap: 12px;
+    grid-template-columns: 64px 1fr;
+    align-items: center;
+    gap: 10px;
   }
 
   .row-label {
-    padding-top: 6px;
     font-size: 14px;
     color: var(--muted);
   }
@@ -459,22 +496,35 @@
     flex-wrap: wrap;
   }
 
-  .need {
-    display: grid;
-    gap: 8px;
-  }
-
   .inline-label {
     font-size: 14px;
     color: var(--muted);
-    margin-right: 2px;
   }
 
-  /* A selected chip is hidden from the list: highlighted, with an eye-off icon. */
+  /* Show chips: lit (tick, accent edge) when that group is listed, plain when it's left out. */
   .filters .chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    padding: 5px 12px 5px 8px;
+    color: var(--muted);
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+
+  .filters .chip.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .tick {
+    display: inline-grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
   }
 
   .chip .note {
@@ -482,69 +532,80 @@
     color: var(--muted);
   }
 
-  .chip.selected .note {
-    color: inherit;
-    opacity: 0.85;
-  }
-
-  /* "Still show spare copies": a small switch, like the Tools page. */
-  .switch-row {
+  /* Keep rules: plain checkboxes; their options sit indented under them. */
+  .check {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    cursor: pointer;
+    gap: 8px;
     width: fit-content;
+    font-size: 15px;
+    cursor: pointer;
   }
 
-  .switch-row input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
+  .check input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: inherit;
   }
 
-  .switch-row {
-    position: relative;
+  .sub {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 24px;
+    font-size: 14px;
+    transition: opacity 0.15s;
   }
 
-  .track {
-    position: relative;
-    width: 34px;
-    height: 18px;
-    border-radius: 9px;
+  .sub.off {
+    opacity: 0.45;
+  }
+
+  .check.sub.off {
+    cursor: default;
+  }
+
+  .segmented {
+    display: inline-flex;
+  }
+
+  .segmented button {
+    padding: 3px 11px;
+    font-size: 14px;
     background: var(--surface-2);
-    border: 1px solid var(--line-strong);
-    flex: none;
+    border-radius: 0;
+    cursor: pointer;
   }
 
-  .knob {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--muted);
-    transition: transform 0.15s, background 0.15s;
+  .segmented button + button {
+    margin-left: -1px;
   }
 
-  .switch-row input:checked + .track {
+  .segmented button:first-child {
+    border-radius: 6px 0 0 6px;
+  }
+
+  .segmented button:last-child {
+    border-radius: 0 6px 6px 0;
+  }
+
+  .segmented button:hover {
+    background: var(--surface-hover);
+  }
+
+  .segmented button.selected {
+    position: relative;
     background: var(--accent);
     border-color: var(--accent);
-  }
-
-  .switch-row input:checked + .track .knob {
-    transform: translateX(16px);
-    background: white;
-  }
-
-  .switch-row input:focus-visible + .track {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    color: white;
+    font-weight: 600;
   }
 
   .hiding {
-    margin: 2px 0 0;
+    flex-basis: 100%;
+    margin: 0;
     font-size: 13px;
   }
 

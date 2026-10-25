@@ -16,20 +16,21 @@
   import { appUpdate, installUpdate, startUpdateChecks } from "$lib/appUpdate.svelte";
   import Ducat from "$lib/icons/Ducat.svelte";
   import Riven from "$lib/icons/Riven.svelte";
+  import TradeChat from "$lib/icons/TradeChat.svelte";
   import Wrench from "@lucide/svelte/icons/wrench";
 
   let { children }: { children: Snippet } = $props();
 
   /** `icon` is a component, or a picture path drawn white with `MaskIcon`. */
   type NavItem = { label: string; icon: Component | string; href?: string; iconScale?: number };
-  // Pages without an href aren't built yet and show as "Soon". Icons: Lucide, plus our own Riven and Ducat; pictures (string paths) are drawn white with MaskIcon.
+  // Pages without an href aren't built yet and show as "Soon". Icons: Lucide, plus our own Riven, Trade Chat and Ducat; pictures (string paths) are drawn white with MaskIcon.
   const nav: NavItem[] = [
     { label: "Home", icon: House, href: "/" },
     { label: "Foundry", icon: "/icons/foundry.png", href: "/foundry" },
     { label: "Inventory", icon: Backpack, href: "/inventory" },
     { label: "Mastery Helper", icon: "/icons/mastered.png", href: "/mastery", iconScale: 1.15 },
     { label: "Rivens", icon: Riven, href: "/rivens" },
-    { label: "Warframe Market", icon: "/icons/warframe-market.png", iconScale: 1.15 },
+    { label: "Trade Chat", icon: TradeChat },
     { label: "Ducanator", icon: Ducat, href: "/ducanator", iconScale: 1.15 },
     { label: "Tools", icon: Wrench, href: "/tools" },
   ];

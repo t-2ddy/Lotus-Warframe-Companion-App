@@ -287,8 +287,9 @@ pub fn build(index: &ItemIndex, current: &Flat) -> InventoryData {
     data
 }
 
-/// Prime sets with at least one tradable part held, by name. `owned` counts MiscItems and Recipes,
-/// where tradable parts and blueprints are kept. Resources (Orokin Cells) aren't set parts.
+/// Prime sets with at least one complete set of tradable parts held, by name. `owned` counts
+/// MiscItems and Recipes, where tradable parts and blueprints are kept. Resources (Orokin Cells)
+/// aren't set parts.
 fn prime_sets(index: &ItemIndex, owned: &HashMap<&str, i64>) -> Vec<PrimeSet> {
     let mut sets: Vec<PrimeSet> = index
         .masterables()
@@ -313,7 +314,8 @@ fn prime_sets(index: &ItemIndex, owned: &HashMap<&str, i64>) -> Vec<PrimeSet> {
                     }
                 })
                 .collect();
-            if parts.iter().all(|p| p.owned == 0) {
+            let count = parts.iter().map(|p| p.owned / i64::from(p.needed)).min().unwrap_or(0);
+            if count == 0 {
                 return None;
             }
             let info = index.get(&m.path);
@@ -323,7 +325,7 @@ fn prime_sets(index: &ItemIndex, owned: &HashMap<&str, i64>) -> Vec<PrimeSet> {
                 image: Some(BLUEPRINT_IMAGE.to_string()),
                 overlay: info.and_then(|i| i.image.clone()),
                 vaulted: m.vaulted,
-                count: parts.iter().map(|p| p.owned / i64::from(p.needed)).min().unwrap_or(0),
+                count,
                 parts,
             })
         })
@@ -557,8 +559,8 @@ mod tests {
         );
         let data = build(&index, &parse(raw.as_bytes()).unwrap().values);
         let sets: Vec<(&str, i64)> = data.sets.iter().map(|s| (s.name.as_str(), s.count)).collect();
-        assert_eq!(sets, [("Braton Prime", 0), ("Frost Prime", 2)], "sets with a part held, by name");
-        let frost = &data.sets[1];
+        assert_eq!(sets, [("Frost Prime", 2)], "only complete sets; Braton has one barrel of two");
+        let frost = &data.sets[0];
         let parts: Vec<(&str, &str, i64, u32)> =
             frost.parts.iter().map(|p| (p.path.rsplit('/').next().unwrap(), p.name.as_str(), p.owned, p.needed)).collect();
         assert_eq!(
@@ -570,7 +572,6 @@ mod tests {
             "traded as blueprints; no Orokin Cells"
         );
         assert_eq!((frost.image.as_deref(), frost.overlay.as_deref(), frost.vaulted), (Some(BLUEPRINT_IMAGE), Some("frost.png"), true));
-        assert_eq!((data.sets[0].parts[0].owned, data.sets[0].parts[0].needed), (1, 2));
     }
 
     #[test]

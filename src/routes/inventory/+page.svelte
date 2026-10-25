@@ -180,7 +180,6 @@
   let partKind = $state("");
   let partPrime = $state("");
   let partBuilds = $state("");
-  let setComplete = $state("");
   let setVaulted = $state("");
   let relicEra = $state("");
   let relicVaulted = $state("");
@@ -235,7 +234,6 @@
     const list = (data?.sets ?? []).filter(
       (s) =>
         (matchesSearch(s.name) || s.parts.some((p) => matchesSearch(p.name))) &&
-        (!setComplete || (s.count > 0) === (setComplete === "Full")) &&
         (!setVaulted || s.vaulted === (setVaulted === "Vaulted")),
     );
     const col = setCol;
@@ -438,12 +436,11 @@
       other: "Other",
     })}
   {:else if tab === "sets"}
-    {@render chips("Sets", ["Full", "Partial"], setComplete, (v) => (setComplete = v), { Full: "Full sets", Partial: "Partial" })}
-    {@render chips("Vaulted", ["Vaulted", "Available"], setVaulted, (v) => (setVaulted = v))}
+    {@render chips("Vaulted", ["Vaulted", "Unvaulted"], setVaulted, (v) => (setVaulted = v))}
     <span class="muted source">Prices from warframe.market · refreshed every 2 weeks</span>
   {:else if tab === "relics"}
     {@render chips("Era", ERAS, relicEra, (v) => (relicEra = v))}
-    {@render chips("Vaulted", ["Vaulted", "Available"], relicVaulted, (v) => (relicVaulted = v))}
+    {@render chips("Vaulted", ["Vaulted", "Unvaulted"], relicVaulted, (v) => (relicVaulted = v))}
   {:else if tab === "mods"}
     {@render select("Mod type", modTypes, modType, (v) => (modType = v))}
     {@render chips("Rarity", RARITIES, modRarity, (v) => (modRarity = v))}

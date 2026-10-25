@@ -1,8 +1,11 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import { compact, hideOnError, imageUrl, markMissing } from "$lib/format";
+  import ItemDetail from "$lib/ItemDetail.svelte";
+  import { cached, remember } from "$lib/pageCache";
 
   type Tab = "warframe" | "primary" | "secondary" | "melee" | "modular" | "arch" | "companion";
 
@@ -65,7 +68,8 @@
     test: (i: Item) => boolean;
   };
 
-  let data = $state<FoundryData | null>(null);
+  // The last list shows at once; the fresh one replaces it a moment later.
+  let data = $state<FoundryData | null>(cached<FoundryData>("foundry"));
   let tab = $state<Tab | "all">("all");
   let search = $state("");
   let filtersOpen = $state(false);
@@ -78,24 +82,18 @@
     { key: "mastery", label: "Mastery", yes: "Mastered", no: "Unmastered", test: (i) => i.mastered },
     { key: "owned", label: "Owned", test: (i) => i.owned > 0 },
     { key: "vaulted", label: "Vaulted", test: (i) => i.vaulted },
-    { key: "ready", label: "Ready to build", test: (i) => i.readyToBuild },
-    { key: "enough", label: "Enough mastery", test: (i) => mr === null || i.masteryReq <= mr },
-    {
-      key: "resurgence",
-      label: "Prime resurgence",
-      unavailable: "Needs live game-world data. Coming in a later milestone.",
-      test: () => false,
-    },
     { key: "crafting", label: "Used for crafting", test: (i) => i.usedForCrafting },
     { key: "favorite", label: "Favorite", test: (i) => i.favorite },
     { key: "helminth", label: "Helminth done", test: (i) => i.subsumed },
-    { key: "shards", label: "Contains archon shards", test: (i) => i.archonShards > 0 },
     { key: "incarnon", label: "Incarnon genesis", test: (i) => i.incarnon },
   ];
 
   const load = () =>
     invoke<FoundryData>("get_foundry")
-      .then((d) => (data = d))
+      .then((d) => {
+        data = d;
+        remember("foundry", d);
+      })
       .catch(() => {});
 
   onMount(() => {
@@ -118,6 +116,23 @@
 
   const matching = $derived((data?.items ?? []).filter(passes));
   const visible = $derived(tab === "all" ? matching : matching.filter((i) => i.tab === tab));
+
+  // Building all ~800 cards at once stalls opening the page for about a second. The first
+  // screenful is built at once, then a batch more each frame until every card is there. A new
+  // tab, search or filter starts over, so switching stays quick too.
+  const FIRST_CARDS = 36;
+  const CARDS_PER_FRAME = 60;
+  let built = $state(FIRST_CARDS);
+  $effect(() => {
+    void [tab, search, JSON.stringify(chosen)];
+    built = FIRST_CARDS;
+  });
+  $effect(() => {
+    if (built >= visible.length) return;
+    const frame = requestAnimationFrame(() => (built += CARDS_PER_FRAME));
+    return () => cancelAnimationFrame(frame);
+  });
+  const cards = $derived(visible.slice(0, built));
   const tabCounts = $derived.by(() => {
     const counts: Record<string, number> = { all: matching.length };
     for (const i of matching) counts[i.tab] = (counts[i.tab] ?? 0) + 1;
@@ -137,6 +152,18 @@
       await invoke("set_favorite", { item: item.path, on });
     } catch {
       item.favorite = !on;
+    }
+    if (data) remember("foundry", $state.snapshot(data));
+  }
+
+  /** The card whose recipe and sources popup is open. */
+  let opened = $state<string | null>(null);
+
+  function onCardKey(e: KeyboardEvent, i: Item) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      opened = i.path;
     }
   }
 
@@ -201,13 +228,24 @@
   </p>
 
   <div class="grid">
-    {#each visible as i (i.path)}
-      <article class="item" class:owned={i.owned > 0}>
+    {#each cards as i (i.path)}
+      <div
+        class="item"
+        class:owned={i.owned > 0}
+        role="button"
+        tabindex="0"
+        aria-label="{i.name}: recipe and where to get it"
+        onclick={() => (opened = i.path)}
+        onkeydown={(e) => onCardKey(e, i)}
+      >
         <header>
           <button
             class="star"
             class:on={i.favorite}
-            onclick={() => toggleFavorite(i)}
+            onclick={(e) => {
+              e.stopPropagation();
+              toggleFavorite(i);
+            }}
             aria-label={i.favorite ? `Unstar ${i.name}` : `Star ${i.name}`}
             aria-pressed={i.favorite}
           >
@@ -258,16 +296,33 @@
           {#if mr !== null && i.masteryReq > mr}<span class="tag bad">MR {i.masteryReq}</span>{/if}
           {#if i.subsumed}<span class="tag helminth">Subsumed</span>{/if}
           {#if i.owned > 0}<span class="tag good">Owned{i.owned > 1 ? ` ×${i.owned}` : ""}</span>{/if}
-          <a class="wiki" href={wikiUrl(i.name)} target="_blank" rel="noreferrer" title="Open {i.name} on the Warframe wiki">
+          <a
+            class="wiki"
+            href={wikiUrl(i.name)}
+            target="_blank"
+            rel="noreferrer"
+            title="Open {i.name} on the Warframe wiki"
+            onclick={(e) => {
+              // Not the card's popup. Stopping the click also keeps it from the opener plugin's
+              // page-wide link handler, so open the page here.
+              e.preventDefault();
+              e.stopPropagation();
+              openUrl(wikiUrl(i.name)).catch(() => {});
+            }}
+          >
             Wiki
             <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5h5v5M9.5 2.5 3 9" /></svg>
           </a>
         </footer>
-      </article>
+      </div>
     {:else}
       <p class="empty">No items match.</p>
     {/each}
   </div>
+{/if}
+
+{#if opened}
+  <ItemDetail path={opened} onclose={() => (opened = null)} />
 {/if}
 
 <style>
@@ -435,8 +490,44 @@
     gap: 10px;
   }
 
-  .item:hover {
+  /* Cards far off screen skip layout and painting until scrolled near (819 cards, ~5,000
+     pictures): the page draws at once. The size is a placeholder until a card is first drawn. */
+  .item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 190px;
+    position: relative;
+    cursor: pointer;
+    transition:
+      border-color 0.15s,
+      background-color 0.15s,
+      box-shadow 0.15s,
+      transform 0.15s;
+  }
+
+  /* Hover: the Mastery Helper's lift (a little smaller than the Rivens page's). */
+  .item:hover,
+  .item:focus-visible {
     border-color: var(--line-strong);
+    background: var(--surface-hover);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+    transform: translateY(-3px) scale(1.015);
+    z-index: 1;
+  }
+
+  .item.owned:hover,
+  .item.owned:focus-visible {
+    box-shadow:
+      inset 3px 0 0 var(--good),
+      0 8px 18px rgba(0, 0, 0, 0.45);
+  }
+
+  .item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .item:active {
+    transform: translateY(-1px) scale(1.005);
   }
 
   /* Owned: a green left edge, so owned items are easy to pick out. */

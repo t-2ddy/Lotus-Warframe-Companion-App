@@ -33,7 +33,7 @@ const OWNED_SECTIONS: [&str; 15] = [
 
 /// Sections that hold build parts: blueprints, prime parts, resources, plus owned items that are
 /// themselves parts of something else (a Braton needed to build another weapon).
-const PART_SECTIONS: [&str; 16] = [
+pub const PART_SECTIONS: [&str; 16] = [
     "MiscItems",
     "Recipes",
     "Suits",
@@ -106,7 +106,7 @@ pub struct FoundryData {
 }
 
 /// Sums the values of `sections` per item path.
-fn totals(current: &Flat, sections: &[&str]) -> HashMap<String, i64> {
+pub fn totals(current: &Flat, sections: &[&str]) -> HashMap<String, i64> {
     let wanted: HashSet<&str> = sections.iter().copied().collect();
     let mut out = HashMap::new();
     for ((section, item), value) in current {

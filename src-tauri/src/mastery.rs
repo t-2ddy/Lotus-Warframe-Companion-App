@@ -19,7 +19,9 @@ use crate::foundry::{self, FoundryItem, PartView};
 use crate::pipeline::Shared;
 use crate::translate::nodes::NodeData;
 use crate::translate::wfcd::split_relic_name;
-use crate::translate::{Flat, ItemIndex, Tab, XpCurve, ACCOUNT, INTRINSICS, MASTERY, MISSIONS, STEEL_PATH};
+use crate::translate::{
+    needs_gilding, Flat, ItemIndex, Tab, XpCurve, ACCOUNT, GILDED, INTRINSICS, MASTERY, MISSIONS, STEEL_PATH, UNGILDED_XP,
+};
 
 pub const JUNCTION_XP: i64 = 1000;
 pub const INTRINSIC_XP: i64 = 1500;
@@ -97,6 +99,10 @@ pub struct Suggestion {
     /// Easy: "owned", "building", "ready" (every part built and the resources there: build it
     /// now) or "set" (every part held, some still only as blueprints to craft).
     pub stage: &'static str,
+    /// MOAs, Hounds, Predasites and Vulpaphylas give mastery only after gilding: how many more
+    /// times it must reach max rank (2, or 1 when a copy is already maxed and waits to be gilded).
+    /// 0 for every other item, and once a copy is gilded (then it levels like anything else).
+    pub maxes_left: u32,
 }
 
 /// A set part still missing, and where to get it: the owned relics that drop it, or buying it.
@@ -167,8 +173,8 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
     // --- Total XP ---
     let mut b = Breakdown::default();
     // The total uses XPInfo only: that matched the AlecaFrame reference to within the account's
-    // progress since the screenshot. Companions levelled only on the copy (Predasites, Vulpaphylas,
-    // hound heads) show as mastered via `mastery_xp`, but whether the game adds them to the total
+    // progress since the screenshot. Gilded companions levelled only on the copy (Predasites,
+    // Vulpaphylas, hound heads) show as mastered via `mastery_xp`, but whether the game adds them to the total
     // is unconfirmed (it would add ~19,900 XP on the test account) — see milestone 11.
     for m in index.masterables() {
         let rank = m.curve.rank_for_xp(has(current, MASTERY, &m.path), m.max_rank);
@@ -241,6 +247,15 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
     let building = |i: &FoundryItem| {
         i.parts.iter().any(|p| p.path.ends_with("Blueprint") && has(current, "PendingRecipes", &p.path) > 0)
     };
+    let maxes_left = |i: &FoundryItem| -> u32 {
+        if !needs_gilding(&i.path) || i.mastered || has(current, GILDED, &i.path) > 0 || has(current, MASTERY, &i.path) > 0 {
+            return 0;
+        }
+        let maxed = curves
+            .get(i.path.as_str())
+            .is_some_and(|&(c, _)| has(current, UNGILDED_XP, &i.path) >= c.xp_for_rank(i.max_rank));
+        if maxed { 1 } else { 2 }
+    };
     let suggestion = |i: &FoundryItem| -> Suggestion {
         let per = curves.get(i.path.as_str()).map_or(100, |&(c, _)| c.mastery_per_rank());
         Suggestion {
@@ -263,6 +278,7 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
             owns_no_parts: false,
             relic_needs: Vec::new(),
             stage: if i.owned > 0 { "owned" } else if building(i) { "building" } else { "" },
+            maxes_left: maxes_left(i),
         }
     };
     let to_get = |i: &&FoundryItem| i.owned == 0 && !i.mastered && !building(i);

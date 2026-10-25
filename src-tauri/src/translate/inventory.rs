@@ -40,12 +40,30 @@ pub const INTRINSICS: &str = "Intrinsics";
 /// Highest XP on any owned copy of an item, value = XP. Some items are only levelled here and never
 /// appear in `XPInfo`: Predasites, Vulpaphylas, and modular companions (a hound's XP sits on the hound,
 /// and its mastery belongs to its head part). For modular items the copy's XP is also recorded for
-/// each of its `ModularParts`.
+/// each of its `ModularParts`. Ungilded modular companions go to [`UNGILDED_XP`] instead.
 pub const INSTANCE_XP: &str = "InstanceXP";
+
+/// Modular companions (MOAs, Hounds, Predasites, Vulpaphylas) give mastery only once gilded: level
+/// to 30, gild (back to rank 0), level to 30 again. An ungilded copy's XP lands here instead of
+/// [`INSTANCE_XP`], value = best XP (≥ rank 30's means it's ready to gild). Verified on a real
+/// account: an ungilded Sly Vulpaphyla at 1.46M XP has no `XPInfo` entry; a gilded Crescent has.
+pub const UNGILDED_XP: &str = "UngildedXP";
+/// Modular companions with a gilded copy owned, value 1.
+pub const GILDED: &str = "Gilded";
+/// The `Features` bit set on gilded items.
+const FEATURE_GILDED: i64 = 8;
 
 /// Bump when `flatten` starts tracking something new. The first capture after a bump is stored
 /// as a fresh starting point, so newly tracked values don't show up as hundreds of "changes".
-pub const FLATTEN_VERSION: i64 = 6;
+pub const FLATTEN_VERSION: i64 = 7;
+
+/// Masterables that need gilding before they give mastery (see [`UNGILDED_XP`]): Predasites and
+/// Vulpaphylas (the pet itself), MOAs and Hounds (their head).
+pub fn needs_gilding(path: &str) -> bool {
+    ["/Pets/CreaturePets/", "/Pets/MoaPets/MoaPetParts/", "/Pets/ZanukaPets/ZanukaPetParts/"]
+        .iter()
+        .any(|p| path.contains(p))
+}
 
 /// The XP that counts toward an item's mastery: its `XPInfo` entry or the best owned copy,
 /// whichever is higher (see [`INSTANCE_XP`]).
@@ -182,16 +200,21 @@ pub fn flatten(doc: &Value) -> Flat {
                 add(&mut out, ARCHON_SHARDS, path, shards as i64);
             }
             let copy_xp = (section != MASTERY).then(|| entry.get("XP").and_then(Value::as_i64)).flatten();
-            if let Some(xp) = copy_xp {
-                keep_max(&mut out, INSTANCE_XP, path, xp);
-            }
-            for part in entry.get("ModularParts").and_then(Value::as_array).into_iter().flatten() {
-                if let Some(p) = part.as_str() {
-                    add(&mut out, MODULAR_PARTS, p, 1);
-                    if let Some(xp) = copy_xp {
-                        keep_max(&mut out, INSTANCE_XP, p, xp);
-                    }
+            let parts: Vec<&str> =
+                entry.get("ModularParts").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+            let gilds = needs_gilding(path) || parts.iter().any(|p| needs_gilding(p));
+            let gilded = entry.get("Features").and_then(Value::as_i64).unwrap_or(0) & FEATURE_GILDED != 0;
+            let xp_section = if gilds && !gilded { UNGILDED_XP } else { INSTANCE_XP };
+            for p in std::iter::once(path).chain(parts.iter().copied()) {
+                if let Some(xp) = copy_xp {
+                    keep_max(&mut out, xp_section, p, xp);
                 }
+                if gilds && gilded {
+                    keep_max(&mut out, GILDED, p, 1);
+                }
+            }
+            for p in &parts {
+                add(&mut out, MODULAR_PARTS, p, 1);
             }
             if section == "Upgrades" && !path.contains("/Randomized/") {
                 // The rank lives in a JSON string: {"lvl":5}. No `lvl` means rank 0.
@@ -308,19 +331,35 @@ mod tests {
 
     #[test]
     fn copy_xp_counts_for_mastery() {
-        // Real shapes: a Predasite and two hounds with the same head, none of them in XPInfo.
-        let doc = r#"{
-            "KubrowPets": [{"ItemType": "/Pets/PharaohPredasite", "XP": 2612965,
-                            "ModularParts": ["/Parts/AntigenA", "/Parts/MutagenA"]}],
+        // Real shapes: a gilded Predasite, an ungilded Vulpaphyla and two ungilded hounds with the
+        // same head; none of them in XPInfo.
+        let pets = "/Lotus/Types/Friendly/Pets";
+        let doc = format!(
+            r#"{{
+            "KubrowPets": [
+                {{"ItemType": "{pets}/CreaturePets/PharaohPredator", "XP": 2612965, "Features": 9,
+                  "ModularParts": ["{pets}/CreaturePets/Parts/AntigenA", "{pets}/CreaturePets/Parts/MutagenA"]}},
+                {{"ItemType": "{pets}/CreaturePets/VulpineInfested", "XP": 1463816,
+                  "ModularParts": ["{pets}/CreaturePets/Parts/AntigenC"]}}],
             "MoaPets": [
-                {"ItemType": "/Pets/ZanukaPetB", "XP": 912851, "ModularParts": ["/Parts/HeadB", "/Parts/BodyA"]},
-                {"ItemType": "/Pets/ZanukaPetB", "XP": 321698, "ModularParts": ["/Parts/HeadB", "/Parts/BodyC"]}],
-            "XPInfo": [{"ItemType": "/Pets/Kavat", "XP": 500}],
-            "KubrowPets2": [{"ItemType": "/Pets/Kavat", "XP": 900000}]
-        }"#;
+                {{"ItemType": "{pets}/ZanukaPets/ZanukaPetB", "XP": 912851, "ModularParts": ["{pets}/ZanukaPets/ZanukaPetParts/HeadB", "/Parts/BodyA"]}},
+                {{"ItemType": "{pets}/ZanukaPets/ZanukaPetB", "XP": 321698, "ModularParts": ["{pets}/ZanukaPets/ZanukaPetParts/HeadB", "/Parts/BodyC"]}}],
+            "OperatorAmps": [{{"ItemType": "/Amp/Generic", "XP": 700000, "ModularParts": ["/Amp/Prism"]}}],
+            "XPInfo": [{{"ItemType": "/Pets/Kavat", "XP": 500}}],
+            "KubrowPets2": [{{"ItemType": "/Pets/Kavat", "XP": 900000}}]
+        }}"#
+        );
         let v = parse(doc.as_bytes()).unwrap().values;
-        assert_eq!(mastery_xp(&v, "/Pets/PharaohPredasite"), 2_612_965, "no XPInfo entry; the copy's XP counts");
-        assert_eq!(mastery_xp(&v, "/Parts/HeadB"), 912_851, "best copy wins for the head part");
+        let pharaoh = format!("{pets}/CreaturePets/PharaohPredator");
+        assert_eq!(mastery_xp(&v, &pharaoh), 2_612_965, "gilded, no XPInfo entry; the copy's XP counts");
+        assert_eq!(v[&key(GILDED, &pharaoh)], 1);
+        let vulpine = format!("{pets}/CreaturePets/VulpineInfested");
+        assert_eq!(mastery_xp(&v, &vulpine), 0, "not gilded: no mastery yet");
+        assert_eq!(v[&key(UNGILDED_XP, &vulpine)], 1_463_816);
+        let head = format!("{pets}/ZanukaPets/ZanukaPetParts/HeadB");
+        assert_eq!(mastery_xp(&v, &head), 0, "ungilded hounds give nothing");
+        assert_eq!(v[&key(UNGILDED_XP, &head)], 912_851, "best ungilded copy");
+        assert_eq!(mastery_xp(&v, "/Amp/Prism"), 700_000, "other modular items don't need gilding");
         assert_eq!(mastery_xp(&v, "/Pets/Kavat"), 900_000, "higher of XPInfo and copies");
         assert_eq!(mastery_xp(&v, "/Nothing"), 0);
     }

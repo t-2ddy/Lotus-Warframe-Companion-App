@@ -1,3 +1,4 @@
+pub mod acquisition;
 pub mod arbitration;
 pub mod capture;
 pub mod ducanator;
@@ -76,6 +77,7 @@ pub fn run() {
             overview::get_overview,
             foundry::get_foundry,
             foundry::set_favorite,
+            acquisition::get_item_detail,
             inventory_view::get_inventory,
             market::request_prices,
             ducanator::get_ducanator,

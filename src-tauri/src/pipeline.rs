@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::acquisition::{self, WikiData};
 use crate::arbitration::{self, ArbData};
 use crate::riven_grades::{self, GradeSheet};
 use crate::capture::{self, find_inventory, find_pid, ProcessSource, Scope, GAME_EXE};
@@ -77,6 +78,8 @@ pub struct Shared {
     pub arbitrations: RwLock<Arc<ArbData>>,
     /// Riven grading sheet (44bananas / Xennethkeisere); empty until loaded.
     pub riven_sheet: RwLock<Arc<GradeSheet>>,
+    /// Part recipes, Clan Dojo labs and vendors (Warframe wiki); empty until loaded.
+    pub wiki: RwLock<Arc<WikiData>>,
 }
 
 /// Opens the database, loads item data and starts the watcher. Call once from Tauri's `setup`.
@@ -115,6 +118,14 @@ pub fn start(app: AppHandle) {
             eprintln!("[arbys] {} arbitrations scheduled, {} nodes tiered", data.schedule.len(), data.tiers.len());
             *shared4.arbitrations.write().unwrap() = Arc::new(data);
             let _ = app4.emit("arbitrations-updated", ());
+        });
+
+        // Wiki part recipes, labs and vendors (the Foundry's item popup): cached, refreshed every 2 weeks.
+        let (shared6, wiki_dir) = (shared.clone(), dir.join("wiki"));
+        std::thread::spawn(move || {
+            let data = acquisition::load_or_refresh(&wiki_dir);
+            eprintln!("[wiki] recipes, labs and vendors loaded: {}", if data.is_empty() { "none" } else { "ok" });
+            *shared6.wiki.write().unwrap() = Arc::new(data);
         });
 
         // Node data: the bundled snapshot now, the wiki's current data once it's loaded.
