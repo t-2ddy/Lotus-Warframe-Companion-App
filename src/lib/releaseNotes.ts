@@ -7,6 +7,13 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.12",
+    fixes: [
+      "Foundry's Incarnon filter shows every weapon that can get an Incarnon form, with all its variants, not only ones you've already unlocked.",
+      "Riven ideal stats no longer mark Blast or the weak point stats as Best.",
+    ],
+  },
+  {
     version: "0.1.11",
     fixes: [
       "Rivens with spliced stats get a grade again instead of \"Collecting data\".",
