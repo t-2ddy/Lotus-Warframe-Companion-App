@@ -204,7 +204,7 @@
           {#if p.riven}
             <span
               class="grade {gradeClass(p.riven.grade)}"
-              title={p.riven.gradePending ? "Has a spliced trait: the grading sheet doesn't cover those yet" : "Grade from the community riven sheet"}
+              title={p.riven.gradePending ? "Has a trait whose numbers aren't known yet, so it can't be graded" : "Grade from the community riven sheet"}
             >
               {p.riven.grade ?? (p.riven.gradePending ? "Collecting data" : "?")}
             </span>

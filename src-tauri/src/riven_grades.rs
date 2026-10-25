@@ -129,9 +129,50 @@ fn parse_combos(s: &str) -> Vec<(Vec<String>, Vec<String>)> {
         .collect()
 }
 
+/// Stats wanted on every weapon whatever its row says: the combined elements and weak point
+/// stats are spliced riven traits newer than the sheet. (Melee rivens never roll weak point.)
+const ALWAYS_WANTED: [&str; 8] = [
+    "WeaponBlastDamageMod",
+    "WeaponCorrosiveDamageMod",
+    "WeaponViralDamageMod",
+    "WeaponGasDamageMod",
+    "WeaponMagneticDamageMod",
+    "WeaponRadiationDamageMod",
+    "WeaponWeakpointCriticalChance",
+    "WeaponWeakpointDamage",
+];
+/// Of those, the ones every weapon's ideal positives list as best in slot (`WP…` on guns only).
+const ALWAYS_BEST: [&str; 5] = ["BLAST", "CORR", "VIRAL", "WPCC", "WPD"];
+/// Never wanted, whatever a row says: the new damage-to-faction traits.
+const NEVER_WANTED: [&str; 3] = ["WeaponFactionDamageOrokin", "WeaponFactionDamageScaldra", "WeaponFactionDamageTechrot"];
+
+/// A sheet code that stands only for [`NEVER_WANTED`] stats (DTO, DTS, DTT): left out of builds.
+fn excluded(code: &str) -> bool {
+    let tags = code_tags(code);
+    !tags.is_empty() && tags.iter().all(|t| NEVER_WANTED.contains(t))
+}
+
+/// A positive the weapon wants: on its row, or one of [`ALWAYS_WANTED`], and never [`NEVER_WANTED`].
+fn wanted_by(codes: &[&String], tag: &str) -> bool {
+    !NEVER_WANTED.contains(&tag) && (ALWAYS_WANTED.contains(&tag) || codes.iter().any(|c| matches(c, tag)))
+}
+
 /// Riven stat tags a sheet code stands for.
 pub fn code_tags(code: &str) -> &'static [&'static str] {
     match code {
+        "BLAST" => &["WeaponBlastDamageMod"],
+        "CORR" | "CORRO" => &["WeaponCorrosiveDamageMod"],
+        "VIRAL" => &["WeaponViralDamageMod"],
+        "GAS" => &["WeaponGasDamageMod"],
+        "MAGN" => &["WeaponMagneticDamageMod"],
+        "RAD" => &["WeaponRadiationDamageMod"],
+        "WPCC" => &["WeaponWeakpointCriticalChance"],
+        "WPD" | "WEAKDMG" => &["WeaponWeakpointDamage"],
+        "SDMG" => &["WeaponStatusDamage"],
+        "SLAMDAM" => &["WeaponMeleeSlamDamageMod"],
+        "DTO" => &["WeaponFactionDamageOrokin"],
+        "DTS" => &["WeaponFactionDamageScaldra"],
+        "DTT" => &["WeaponFactionDamageTechrot"],
         "CD" => &["WeaponCritDamageMod"],
         "CC" => &["WeaponCritChanceMod"],
         "DMG" => &["WeaponDamageAmountMod", "WeaponMeleeDamageMod"],
@@ -189,6 +230,19 @@ pub fn rule_for<'a>(sheet: &'a GradeSheet, kind: &str, weapon: &str) -> Option<&
 /// Readable name for a sheet code, as the overlay's "best attributes" shows it.
 pub fn code_name(code: &str) -> String {
     match code {
+        "BLAST" => "Blast",
+        "CORR" | "CORRO" => "Corrosive",
+        "VIRAL" => "Viral",
+        "GAS" => "Gas",
+        "MAGN" => "Magnetic",
+        "RAD" => "Radiation",
+        "WPCC" => "Weak point crit chance",
+        "WPD" | "WEAKDMG" => "Weak point damage",
+        "SDMG" => "Status damage",
+        "SLAMDAM" => "Slam damage",
+        "DTO" => "Damage to Orokin",
+        "DTS" => "Damage to Scaldra",
+        "DTT" => "Damage to Techrot",
         "CD" => "Crit damage",
         "CC" => "Crit chance",
         "DMG" => "Damage",
@@ -232,6 +286,9 @@ pub fn code_name(code: &str) -> String {
 pub struct BestStats {
     /// Alternative builds (the sheet's "… or …").
     pub builds: Vec<BestBuild>,
+    /// Best on every weapon besides its builds: Blast, Corrosive, Viral and, on guns, the weak
+    /// point stats.
+    pub always: Vec<BestStat>,
     /// Negatives that do no harm on this weapon.
     pub harmless: Vec<BestStat>,
     /// The build this riven comes closest to.
@@ -256,14 +313,15 @@ pub struct BestStat {
 }
 
 /// The weapon's best stats with what this riven has (positive tags `buffs`, negative `curses`).
-pub fn best_stats(rule: &Rule, buffs: &[&str], curses: &[&str]) -> BestStats {
+/// `melee` leaves out the weak point stats, which melee rivens can't roll.
+pub fn best_stats(rule: &Rule, buffs: &[&str], curses: &[&str], melee: bool) -> BestStats {
     let stat = |code: &String, tags: &[&str]| BestStat { name: code_name(code), has: tags.iter().any(|t| matches(code, t)) };
     let builds: Vec<BestBuild> = rule
         .combos
         .iter()
         .map(|(req, pool)| BestBuild {
-            required: req.iter().map(|c| stat(c, buffs)).collect(),
-            optional: pool.iter().map(|c| stat(c, buffs)).collect(),
+            required: req.iter().filter(|c| !excluded(c)).map(|c| stat(c, buffs)).collect(),
+            optional: pool.iter().filter(|c| !excluded(c)).map(|c| stat(c, buffs)).collect(),
         })
         .collect();
     // Closest build: most required stats, then most stats overall.
@@ -272,7 +330,12 @@ pub fn best_stats(rule: &Rule, buffs: &[&str], curses: &[&str]) -> BestStats {
         (req == b.required.len(), req, req + b.optional.iter().filter(|s| s.has).count())
     };
     let matched = (0..builds.len()).max_by_key(|&i| (score(&builds[i]), std::cmp::Reverse(i))).unwrap_or(0);
-    BestStats { harmless: rule.harmless.iter().map(|c| stat(c, curses)).collect(), builds, matched }
+    let always = ALWAYS_BEST
+        .iter()
+        .filter(|c| !(melee && c.starts_with("WP")))
+        .map(|c| stat(&c.to_string(), buffs))
+        .collect();
+    BestStats { harmless: rule.harmless.iter().map(|c| stat(c, curses)).collect(), builds, always, matched }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -291,9 +354,9 @@ pub fn grade(rule: &Rule, buffs: &[&str], curses: &[&str]) -> Graded {
     // Best build: one with its required stats first, then the most wanted positives.
     let mut best: Option<(bool, usize, Vec<bool>)> = None;
     for (required, pool) in &rule.combos {
-        let has_required = required.iter().all(|r| buffs.iter().any(|b| matches(r, b)));
-        let wanted: Vec<bool> =
-            buffs.iter().map(|b| required.iter().chain(pool).any(|c| matches(c, b))).collect();
+        let has_required = required.iter().filter(|r| !excluded(r)).all(|r| buffs.iter().any(|b| matches(r, b)));
+        let codes: Vec<&String> = required.iter().chain(pool).collect();
+        let wanted: Vec<bool> = buffs.iter().map(|b| wanted_by(&codes, b)).collect();
         let count = wanted.iter().filter(|w| **w).count();
         if best.as_ref().is_none_or(|(r, c, _)| (has_required, count) > (*r, *c)) {
             best = Some((has_required, count, wanted));
@@ -328,14 +391,55 @@ mod tests {
         let rules = parse_tab(TAB);
         let kronen = &rules["kronen"];
         // Crit chance + crit damage + initial combo, impact negative.
-        let b = best_stats(kronen, &["WeaponCritChanceMod", "WeaponCritDamageMod", "WeaponMeleeComboInitialBonusMod"], &["WeaponImpactDamageMod"]);
+        let b = best_stats(kronen, &["WeaponCritChanceMod", "WeaponCritDamageMod", "WeaponMeleeComboInitialBonusMod"], &["WeaponImpactDamageMod"], true);
         assert_eq!(b.builds.len(), 2);
         assert_eq!(b.matched, 1, "the CC/CD/IC/DMG build fits better than CD AS RANGE");
         let names: Vec<(&str, bool)> = b.builds[0].required.iter().map(|s| (s.name.as_str(), s.has)).collect();
         assert_eq!(names, [("Crit damage", true), ("Attack speed", false), ("Range", false)]);
         assert!(b.harmless.iter().all(|s| !s.has), "impact isn't harmless on Kronen");
-        let torid = best_stats(&rules["torid"], &["WeaponCritDamageMod"], &["WeaponZoomFovMod"]);
+        let torid = best_stats(&rules["torid"], &["WeaponCritDamageMod", "WeaponViralDamageMod"], &["WeaponZoomFovMod"], false);
         assert!(torid.harmless.iter().any(|s| s.name == "Zoom" && s.has));
+        let always: Vec<(&str, bool)> = torid.always.iter().map(|s| (s.name.as_str(), s.has)).collect();
+        assert_eq!(
+            always,
+            [("Blast", false), ("Corrosive", false), ("Viral", true), ("Weak point crit chance", false), ("Weak point damage", false)]
+        );
+        let melee: Vec<&str> = b.always.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(melee, ["Blast", "Corrosive", "Viral"], "melee rivens can't roll weak point stats");
+    }
+
+    #[test]
+    fn sheet_codes_for_new_stats() {
+        // Rows as the sheet now writes them (Larkspur, Jat Kittag).
+        let rules = parse_tab(
+            "\"WEAPON\",\"POSITIVE STATS:\",\"NEGATIVE STATS:\"\n\
+             \"larkspur\",\"MS DMG/TOX/SC/FR/CORRO/VIRAL/SDMG/WEAKDMG\",\"ZOOM\"\n\
+             \"jat kittag\",\"TOX DTG/DTC/DTI/DTT/DTO/DTS/SLAMDAM\",\"ZOOM\"\n",
+        );
+        let lark = best_stats(&rules["larkspur"], &["WeaponCorrosiveDamageMod"], &[], false);
+        let names: Vec<&str> = lark.builds[0].optional.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["Damage", "Toxin", "Status chance", "Fire rate", "Corrosive", "Viral", "Status damage", "Weak point damage"]);
+        assert!(lark.builds[0].optional.iter().any(|s| s.name == "Corrosive" && s.has), "CORRO is Corrosive");
+        let jat = best_stats(&rules["jat kittag"], &[], &[], true);
+        let names: Vec<&str> = jat.builds[0].optional.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["Damage to Grineer", "Damage to Corpus", "Damage to Infested", "Slam damage"], "new factions left out");
+        let g = grade(&rules["larkspur"], &["WeaponFireIterationsMod", "WeaponStatusDamage"], &["WeaponZoomFovMod"]);
+        assert_eq!(g.grade, "Great", "SDMG is Status Damage");
+    }
+
+    #[test]
+    fn combined_elements_always_wanted_new_factions_never() {
+        let t = parse_tab(TAB);
+        let torid = &t["torid"];
+        // CD + MS + Gas (not on Torid's row), harmless zoom: every positive wanted.
+        let g = grade(torid, &["WeaponCritDamageMod", "WeaponFireIterationsMod", "WeaponGasDamageMod"], &["WeaponZoomFovMod"]);
+        assert_eq!((g.grade, g.wanted.as_slice()), ("Great", &[true, true, true][..]));
+        // Weak point damage counts too.
+        let g = grade(torid, &["WeaponCritDamageMod", "WeaponWeakpointDamage"], &["WeaponZoomFovMod"]);
+        assert_eq!(g.grade, "Great");
+        // Damage to Techrot never does: dead weight, like punch through.
+        let g = grade(torid, &["WeaponCritDamageMod", "WeaponFireIterationsMod", "WeaponFactionDamageTechrot"], &["WeaponZoomFovMod"]);
+        assert_eq!((g.grade, g.wanted.as_slice()), ("Good", &[true, true, false][..]));
     }
 
     #[test]

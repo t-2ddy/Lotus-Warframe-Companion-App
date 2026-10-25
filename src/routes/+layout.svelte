@@ -16,21 +16,21 @@
   import { appUpdate, installUpdate, startUpdateChecks } from "$lib/appUpdate.svelte";
   import Ducat from "$lib/icons/Ducat.svelte";
   import Riven from "$lib/icons/Riven.svelte";
-  import TradeChat from "$lib/icons/TradeChat.svelte";
+  import Chat from "$lib/icons/Chat.svelte";
   import Wrench from "@lucide/svelte/icons/wrench";
 
   let { children }: { children: Snippet } = $props();
 
   /** `icon` is a component, or a picture path drawn white with `MaskIcon`. */
   type NavItem = { label: string; icon: Component | string; href?: string; iconScale?: number };
-  // Pages without an href aren't built yet and show as "Soon". Icons: Lucide, plus our own Riven, Trade Chat and Ducat; pictures (string paths) are drawn white with MaskIcon.
+  // Pages without an href aren't built yet and show as "Soon". Icons: Lucide, plus our own Riven, Chat and Ducat; pictures (string paths) are drawn white with MaskIcon.
   const nav: NavItem[] = [
     { label: "Home", icon: House, href: "/" },
     { label: "Foundry", icon: "/icons/foundry.png", href: "/foundry" },
     { label: "Inventory", icon: Backpack, href: "/inventory" },
     { label: "Mastery Helper", icon: "/icons/mastered.png", href: "/mastery", iconScale: 1.15 },
     { label: "Rivens", icon: Riven, href: "/rivens" },
-    { label: "Trade Chat", icon: TradeChat },
+    { label: "Chat", icon: Chat },
     { label: "Ducanator", icon: Ducat, href: "/ducanator", iconScale: 1.15 },
     { label: "Tools", icon: Wrench, href: "/tools" },
   ];
@@ -84,9 +84,21 @@
   function closeOnOutside(e: MouseEvent) {
     if (statusOpen && !(e.target as HTMLElement).closest(".status")) statusOpen = false;
   }
+
+  /** No browser right-click menu (Back, Reload, Inspect…) in the app; text fields keep theirs
+   *  for cut, copy and paste. */
+  function blockContextMenu(e: MouseEvent) {
+    const field = (e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable='true']");
+    if (!field) e.preventDefault();
+  }
 </script>
 
-<svelte:window onclick={closeOnOutside} ononline={() => (online = true)} onoffline={() => (online = false)} />
+<svelte:window
+  onclick={closeOnOutside}
+  oncontextmenu={blockContextMenu}
+  ononline={() => (online = true)}
+  onoffline={() => (online = false)}
+/>
 
 {#snippet navIcon(icon: Component | string, scale = 1)}
   {#if typeof icon === "string"}

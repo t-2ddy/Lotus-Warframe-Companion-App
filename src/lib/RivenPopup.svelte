@@ -32,7 +32,7 @@
     dots: number;
     stats: RivenStat[];
     grade: "Great" | "Good" | "OK" | "Bad" | null;
-    /** Has a spliced trait: no grade yet ("collecting data"). */
+    /** Has a trait whose numbers aren't known yet: no grade ("collecting data"). */
     gradePending?: boolean;
     perfectness: number;
     /** The weapon's best stats from the grading sheet; null if the weapon isn't listed. */
@@ -107,7 +107,7 @@
         <h2>{riven.weapon} <span class="rname">{riven.name}</span></h2>
         <div class="meta">
           {#if riven.grade}<span class="grade grade-{riven.grade.toLowerCase()}">{riven.grade}</span>
-          {:else if riven.gradePending}<span title="Has a spliced trait: the grading sheet doesn't cover those yet">Grade: collecting data</span>{/if}
+          {:else if riven.gradePending}<span title="Has a trait whose numbers aren't known yet, so it can't be graded">Grade: collecting data</span>{/if}
           <span>Stat perfectness {Math.round(riven.perfectness)}%</span>
           <span>{riven.kind}</span>
           <span>Disposition {riven.disposition.toFixed(2)} ({riven.dots}/5)</span>

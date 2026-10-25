@@ -5,6 +5,21 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Changed
+- Right-clicking in Lotus no longer opens the browser menu (Back, Reload, Inspect…); text fields
+  keep theirs for cut, copy and paste.
+- The Trade Chat tab (still to come) is now just Chat.
+- Riven grades count the spliced combined elements (Blast, Corrosive, Gas, Magnetic, Radiation,
+  Viral) and weak point crit chance and damage as wanted on every weapon; the grading sheet
+  predates them. The new damage to Orokin, Scaldra and Techrot never count. Ideal positives list
+  Blast, Corrosive, Viral and (guns only) the weak point stats as Best.
+- Rivens with spliced traits (combined elements, Status Damage, weak point, new factions) are
+  graded instead of showing "Collecting data": their ranges come from DE's data now. Only a
+  trait whose numbers aren't known (one a card read couldn't identify) still waits for data.
+- Riven ideal stats read the grading sheet's new codes: CORRO (Corrosive, which showed as
+  "Corro" beside Corrosive), SDMG (Status damage), WEAKDMG (Weak point damage) and SLAMDAM (Slam
+  damage) now show by name and count when grading; DTO/DTS/DTT (new factions) are left out.
+
 ## [0.1.10] — 2026-10-25
 
 ### Added

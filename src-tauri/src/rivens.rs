@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::pipeline::Shared;
-use crate::riven_grades::{best_stats, grade, rule_for, BestStats, GradeSheet};
+use crate::riven_grades::{best_stats, grade, rule_for, tab_for, BestStats, GradeSheet};
 use crate::translate::{parse, Flat, OwnedRiven};
 
 /// Stats are shown at this rank (max), the way rivens are compared and traded.
@@ -327,15 +327,6 @@ pub fn stat_info(kind: &RivenType, tag: &str) -> Option<StatInfo> {
     Some(StatInfo { value: heat.value, prefix: String::new(), suffix: String::new(), label: format!("|val|% {name}") })
 }
 
-/// A spliced trait, or one this riven type's data doesn't have: a combined element, a pending
-/// trait read off a card, or an unknown tag on an owned riven (`WeaponStatusDamage`).
-pub fn is_spliced(data: &RivenData, kind: &RivenType, tag: &str) -> bool {
-    if tag.starts_with(LEGACY_PREFIX) || tag.starts_with(UNREAD_PREFIX) || legacy_stat(data, kind, tag).is_some() {
-        return false;
-    }
-    spliced_trait(tag) || !kind.stats.contains_key(tag)
-}
-
 /// A readable name for a tag the data doesn't have: `WeaponStatusDamage` → "Status Damage",
 /// `WeaponFactionDamageInfested` → "Damage to Infested".
 pub fn trait_name(tag: &str) -> String {
@@ -628,7 +619,7 @@ pub(crate) fn apply_grade(r: &mut RivenView, sheet: &GradeSheet) {
     let buffs: Vec<&str> = r.stats.iter().filter(|s| s.good).map(|s| s.tag.as_str()).collect();
     let curses: Vec<&str> = r.stats.iter().filter(|s| !s.good).map(|s| s.tag.as_str()).collect();
     let g = grade(rule, &buffs, &curses);
-    r.best = Some(best_stats(rule, &buffs, &curses));
+    r.best = Some(best_stats(rule, &buffs, &curses, tab_for(&r.kind) == "melee"));
     let mut wanted = g.wanted.into_iter();
     for s in &mut r.stats {
         s.wanted = Some(if s.good { wanted.next().unwrap_or(false) } else { g.harmless_negative });
@@ -669,7 +660,11 @@ pub fn view_with(
     let stats = stats(data, kind, &fp, disposition, show_rank);
     let graded: Vec<f64> = stats.iter().filter(|s| !s.pending).map(|s| s.quality).collect();
     let perfectness = if graded.is_empty() { 0.0 } else { 100.0 * graded.iter().sum::<f64>() / graded.len() as f64 };
-    let spliced = fp.buffs.iter().chain(&fp.curses).any(|r| is_spliced(data, kind, &r.tag));
+    // Ungraded ("collecting data") only with a trait whose numbers aren't known: one the overlay
+    // couldn't identify on a card, or a tag no riven data has. Spliced traits with known ranges
+    // (combined elements, Status Damage, weak point, new factions) are graded like any stat.
+    let unknown = fp.buffs.iter().chain(&fp.curses).any(|r| r.tag.starts_with(PENDING_PREFIX))
+        || stats.iter().any(|s| s.pending && !s.legacy && !s.unread);
     let mut view = RivenView {
         id: r.id.clone(),
         item_type: r.item_type.clone(),
@@ -691,7 +686,7 @@ pub fn view_with(
         grade_pending: false,
     };
     apply_grade(&mut view, sheet);
-    if spliced {
+    if unknown {
         view.grade = None;
         view.grade_pending = true;
     }
@@ -902,12 +897,11 @@ mod tests {
         };
         let v = view(&d, &GradeSheet::default(), &torid, MAX_RANK).unwrap();
         assert_eq!(v.stats.len(), 4, "the spliced trait is shown, not dropped");
-        // Its range comes from DE's export: worked out like any stat. The grading sheet still
-        // doesn't cover spliced traits.
+        // Its range comes from DE's export: worked out and graded like any stat.
         let status = v.stats.iter().find(|s| s.tag == "WeaponStatusDamage").unwrap();
         assert_eq!((status.text.as_str(), status.pending), ("+120.1% Status Damage", false));
         assert_ne!(status.letter, "?");
-        assert!(v.grade_pending && v.grade.is_none());
+        assert!(!v.grade_pending);
         let latron = OwnedRiven {
             id: "l".into(),
             item_type: "/Lotus/Upgrades/Mods/Randomized/LotusRifleRandomModRare".into(),
@@ -917,7 +911,14 @@ mod tests {
         let v = view_with(&d, &GradeSheet::default(), &latron, 8, Some(1.3)).unwrap();
         let viral = v.stats.iter().find(|s| s.tag == "WeaponViralDamageMod").unwrap();
         assert_eq!((viral.text.as_str(), viral.pending), ("+119.7% Viral", false));
-        assert!(v.grade_pending);
+        assert!(!v.grade_pending, "combined elements are graded");
+        // A trait no riven data has still waits for data.
+        let odd = OwnedRiven {
+            fingerprint: latron.fingerprint.replace("WeaponViralDamageMod", "WeaponSomethingNewMod"),
+            ..latron.clone()
+        };
+        let v = view(&d, &GradeSheet::default(), &odd, MAX_RANK).unwrap();
+        assert!(v.grade_pending && v.grade.is_none());
         assert_eq!(trait_name("WeaponFactionDamageInfested"), "Damage to Infested");
     }
 

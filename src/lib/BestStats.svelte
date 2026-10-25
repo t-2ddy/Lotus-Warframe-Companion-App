@@ -1,7 +1,8 @@
 <script lang="ts" module>
   export type BestStat = { name: string; has: boolean };
   export type BestBuild = { required: BestStat[]; optional: BestStat[] };
-  export type Best = { builds: BestBuild[]; harmless: BestStat[]; matched: number };
+  /** `always`: best on every weapon besides its builds (Blast, Corrosive, Viral, weak point). */
+  export type Best = { builds: BestBuild[]; always: BestStat[]; harmless: BestStat[]; matched: number };
 </script>
 
 <script lang="ts">
@@ -23,6 +24,8 @@
       if (!rows.some((r) => r.name === s.name)) rows.push({ ...s, bis });
     };
     for (const b of order) b.required.forEach((s) => add(s, true));
+    // Best on every weapon, after the sheet's own picks.
+    (best.always ?? []).forEach((s) => add(s, true));
     for (const b of order) b.optional.forEach((s) => add(s, false));
     return rows;
   });

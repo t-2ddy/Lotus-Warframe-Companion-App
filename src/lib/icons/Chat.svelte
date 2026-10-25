@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The Trade Chat tab's icon in Lucide's style: a hollow square cut in half vertically, each half
+  // The Chat tab's icon in Lucide's style: a hollow square cut in half vertically, each half
   // ending in an arrowhead so the two run counter-clockwise (left half down and out along the
   // bottom, right half up and back along the top), like a trade going both ways.
   let {

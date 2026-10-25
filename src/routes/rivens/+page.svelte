@@ -40,7 +40,7 @@
     dots: number;
     stats: Stat[];
     grade: "Great" | "Good" | "OK" | "Bad" | null;
-    /** Has a spliced trait: no grade yet ("collecting data"). */
+    /** Has a trait whose numbers aren't known yet: no grade ("collecting data"). */
     gradePending: boolean;
     perfectness: number;
   };
@@ -114,7 +114,7 @@
   const gradeLabel = (r: Riven) => r.grade ?? (r.gradePending ? "Collecting data" : "Not rated");
 
   function gradeHelp(r: Riven) {
-    if (r.gradePending) return "Has a spliced trait: the grading sheet doesn't cover those yet (collecting data)";
+    if (r.gradePending) return "Has a trait whose numbers aren't known yet, so it can't be graded (collecting data)";
     switch (r.grade) {
       case "Great":
         return "Great: every positive is wanted for this weapon and the negative is harmless";
