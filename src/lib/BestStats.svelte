@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export type BestStat = { name: string; has: boolean };
   export type BestBuild = { required: BestStat[]; optional: BestStat[] };
-  /** `always`: best on every weapon besides its builds (Blast, Corrosive, Viral, weak point). */
+  /** `always`: best on every weapon besides its builds (Corrosive, Viral). */
   export type Best = { builds: BestBuild[]; always: BestStat[]; harmless: BestStat[]; matched: number };
 </script>
 

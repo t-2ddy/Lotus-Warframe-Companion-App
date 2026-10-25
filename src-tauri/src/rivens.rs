@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::pipeline::Shared;
-use crate::riven_grades::{best_stats, grade, rule_for, tab_for, BestStats, GradeSheet};
+use crate::riven_grades::{best_stats, grade, rule_for, BestStats, GradeSheet};
 use crate::translate::{parse, Flat, OwnedRiven};
 
 /// Stats are shown at this rank (max), the way rivens are compared and traded.
@@ -619,7 +619,7 @@ pub(crate) fn apply_grade(r: &mut RivenView, sheet: &GradeSheet) {
     let buffs: Vec<&str> = r.stats.iter().filter(|s| s.good).map(|s| s.tag.as_str()).collect();
     let curses: Vec<&str> = r.stats.iter().filter(|s| !s.good).map(|s| s.tag.as_str()).collect();
     let g = grade(rule, &buffs, &curses);
-    r.best = Some(best_stats(rule, &buffs, &curses, tab_for(&r.kind) == "melee"));
+    r.best = Some(best_stats(rule, &buffs, &curses));
     let mut wanted = g.wanted.into_iter();
     for s in &mut r.stats {
         s.wanted = Some(if s.good { wanted.next().unwrap_or(false) } else { g.harmless_negative });

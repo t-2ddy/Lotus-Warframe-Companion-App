@@ -90,7 +90,11 @@ pub struct FoundryItem {
     pub owned: i64,
     pub subsumed: bool,
     pub archon_shards: i64,
+    /// Incarnon unlocked on the account's copy.
     pub incarnon: bool,
+    /// The weapon has an Incarnon form: a Genesis exists for it or one of its variants, or it's
+    /// an Incarnon weapon of its own.
+    pub incarnon_capable: bool,
     pub used_for_crafting: bool,
     pub favorite: bool,
     pub ready_to_build: bool,
@@ -172,9 +176,11 @@ fn item(
             }
         })
         .collect();
+    let name = index.display_name(&m.path);
     FoundryItem {
+        incarnon_capable: matches!(m.tab, Tab::Primary | Tab::Secondary | Tab::Melee) && index.incarnon_capable(&name),
         path: m.path.clone(),
-        name: index.display_name(&m.path),
+        name,
         tab: m.tab,
         image: info.and_then(|i| i.image.clone()),
         is_prime: m.is_prime,

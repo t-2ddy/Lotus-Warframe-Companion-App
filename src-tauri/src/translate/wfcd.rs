@@ -329,6 +329,29 @@ pub struct ItemIndex {
     drops: HashMap<String, Vec<Drop>>,
     /// Foundry and Market costs of items that are built.
     builds: HashMap<String, Build>,
+    /// Weapons an Incarnon Genesis exists for, by base name ("Braton"), from WFCD's
+    /// "<Weapon> Incarnon Genesis" adapters.
+    genesis: HashSet<String>,
+}
+
+/// Weapons with an Incarnon form of their own, no Genesis needed (Warframe wiki, Incarnon).
+const NATIVE_INCARNON: [&str; 8] = ["Felarx", "Innodem", "Laetum", "Phenmor", "Praedos", "Onos", "Ruvox", "Thalys"];
+/// Words that make a variant of a weapon. Every variant takes its weapon's Genesis (wiki:
+/// "All weapon sub-types such as Prime, Wraith, and Vandal are eligible"); Akimbo and Dual
+/// weapons are other weapons by name, so they don't match.
+const VARIANT_PREFIXES: [&str; 10] = ["mk1-", "prisma ", "rakta ", "sancti ", "synoid ", "telos ", "vaykor ", "secura ", "dex ", "mara "];
+const VARIANT_SUFFIXES: [&str; 3] = [" prime", " vandal", " wraith"];
+
+/// A weapon's name without its variant words: "Mk1-Braton", "Braton Vandal" → "braton".
+fn variant_base(name: &str) -> String {
+    let mut n = name.to_lowercase();
+    if let Some(p) = VARIANT_PREFIXES.iter().find(|p| n.starts_with(*p)) {
+        n = n[p.len()..].to_string();
+    }
+    if let Some(s) = VARIANT_SUFFIXES.iter().find(|s| n.ends_with(*s)) {
+        n.truncate(n.len() - s.len());
+    }
+    n
 }
 
 /// The image every blueprint shares in WFCD.
@@ -451,6 +474,7 @@ impl ItemIndex {
         let mut drops: Option<RelicTables> = None;
         let mut item_drops: HashMap<String, Vec<Drop>> = HashMap::new();
         let mut builds: HashMap<String, Build> = HashMap::new();
+        let mut genesis: HashSet<String> = HashSet::new();
 
         for (category, bytes) in files {
             if category == DROPS {
@@ -471,6 +495,9 @@ impl ItemIndex {
                     continue;
                 }
                 let Some(name) = item.name.as_deref().map(clean_name) else { continue };
+                if let Some(weapon) = name.strip_suffix(" Incarnon Genesis") {
+                    genesis.insert(weapon.to_lowercase());
+                }
                 for c in &item.components {
                     let replace = parent_of
                         .get(&c.unique_name)
@@ -646,6 +673,7 @@ impl ItemIndex {
             by_name,
             drops: item_drops,
             builds,
+            genesis,
         }
     }
 
@@ -729,6 +757,12 @@ impl ItemIndex {
     /// Foundry and Market costs of a built item.
     pub fn build_of(&self, path: &str) -> Option<&Build> {
         self.builds.get(path)
+    }
+
+    /// A weapon with an Incarnon form: one of its variants' Genesis exists, or it has one of its
+    /// own (Felarx, Thalys…).
+    pub fn incarnon_capable(&self, name: &str) -> bool {
+        NATIVE_INCARNON.contains(&name) || self.genesis.contains(&variant_base(name))
     }
 
     /// The path of an item by its name ("Orokin Cell"), any case.
@@ -985,6 +1019,19 @@ mod tests {
         assert_eq!(barrel.ducats, Some(15));
         assert!(barrel.tradable);
         assert_eq!(index.display_name("/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint"), "Braton Prime Blueprint");
+    }
+
+    #[test]
+    fn incarnon_genesis_covers_every_variant() {
+        let misc = br#"[{"uniqueName":"/I/BratonUnlocker","name":"Braton Incarnon Genesis"},
+                        {"uniqueName":"/I/SkanaUnlocker","name":"Skana Incarnon Genesis"}]"#;
+        let index = ItemIndex::build(&[("Misc".into(), misc.to_vec())]);
+        for name in ["Braton", "Mk1-Braton", "Braton Prime", "Braton Vandal", "Prisma Skana", "Skana Prime", "Thalys"] {
+            assert!(index.incarnon_capable(name), "{name}");
+        }
+        for name in ["Akbronco", "Dual Skana", "Burston", "Kuva Braton Wraith Extra"] {
+            assert!(!index.incarnon_capable(name), "{name}");
+        }
     }
 
     #[test]

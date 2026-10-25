@@ -37,7 +37,10 @@
     owned: number;
     subsumed: boolean;
     archonShards: number;
+    /** Incarnon unlocked on your copy. */
     incarnon: boolean;
+    /** Has an Incarnon form: a Genesis for it or a variant, or its own. */
+    incarnonCapable: boolean;
     usedForCrafting: boolean;
     favorite: boolean;
     readyToBuild: boolean;
@@ -85,7 +88,7 @@
     { key: "crafting", label: "Used for crafting", test: (i) => i.usedForCrafting },
     { key: "favorite", label: "Favorite", test: (i) => i.favorite },
     { key: "helminth", label: "Helminth done", test: (i) => i.subsumed },
-    { key: "incarnon", label: "Incarnon genesis", test: (i) => i.incarnon },
+    { key: "incarnon", label: "Incarnon", test: (i) => i.incarnonCapable },
   ];
 
   const load = () =>

@@ -5,6 +5,16 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+### Changed
+- Riven ideal positives no longer list Blast or weak point crit chance and damage as Best
+  (Corrosive and Viral stay). All three still count as wanted stats when grading.
+
+### Fixed
+- Foundry's Incarnon filter (was "Incarnon genesis") only found weapons you'd already unlocked
+  Incarnon on. It now lists every weapon with an Incarnon form: each of the 45 Genesis weapons
+  with all its variants (Mk1-Braton, Braton Prime, Braton Vandal…; 90 weapons) plus the
+  Incarnon weapons of their own (Felarx, Thalys…). Cards still tag the ones you've unlocked.
+
 ## [0.1.11] — 2026-10-25
 
 ### Changed
