@@ -7,6 +7,17 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.1.9",
+    fixes: [
+      "Click a Foundry card to see its full recipe and where to get every part: mission, relic, bounty, enemy, vendor, Dojo lab or Market.",
+      "MOAs, Hounds, Predasites and Vulpaphylas only count as mastered once gilded; Mastery Helper shows how many more times to max them.",
+      "Dual weapons like Akbronco need two copies of the single weapon again, instead of one copy counting twice.",
+      "The Foundry opens instantly, and its cards lift on hover.",
+      "Clearer Ducanator filters: choose what to show, and which parts to keep for building.",
+      "Prime Sets lists only sets you own in full; the Warframe Market tab is now Trade Chat.",
+    ],
+  },
+  {
     version: "0.1.8",
     fixes: [
       "The relic rewards overlay works again: the item data Lotus uses had lost every relic's rewards.",

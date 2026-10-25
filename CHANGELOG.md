@@ -5,6 +5,8 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-10-25
+
 ### Added
 - Foundry: click a card for its full recipe and where to get each part. Lists the main
   blueprint, parts and resources with how many you hold, and what each part's own blueprint
@@ -277,7 +279,9 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.8...v0.1.9
+[0.1.8]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.4...v0.1.5
