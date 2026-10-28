@@ -381,6 +381,19 @@ const CODENAME_ALIASES: [(&str, &str, &str); 2] = [
     ("Animus", "Equinox Day", "Equinox Day Aspect"),
 ];
 
+/// Names of items WFCD doesn't list at all, from DE's own export (ExportResources): The New
+/// Strange quest's craftable items, kept in inventory after the quest. Their blueprints
+/// (`...ChromaBeaconABlueprint`) are named from these by `display_name`.
+const UNLISTED_NAMES: [(&str, &str); 3] = [
+    ("/Lotus/Types/Recipes/WarframeRecipes/ChromaBeaconAComponent", "Scorched Beacon"),
+    ("/Lotus/Types/Recipes/WarframeRecipes/ChromaBeaconBComponent", "Chroma Signal"),
+    ("/Lotus/Types/Recipes/WarframeRecipes/ChromaBeaconCComponent", "Chroma Mark"),
+];
+
+fn unlisted_name(path: &str) -> Option<&'static str> {
+    UNLISTED_NAMES.iter().find(|(p, _)| *p == path).map(|(_, name)| *name)
+}
+
 /// When several items list the same build part, the one it's named after: equipment first,
 /// cosmetics and everything else after (some ephemera recipes also list Warframe Systems).
 fn parent_priority(file: &str) -> u8 {
@@ -784,11 +797,37 @@ impl ItemIndex {
         self.items.get(path)
     }
 
-    /// A readable name for any path: the WFCD name if known, then a Warframe blueprint name from
-    /// its codename, otherwise one made from the path.
+    /// For a blueprint WFCD doesn't list, the listed item it builds: the same path without
+    /// "Blueprint" (`.../1999EntHybridPistolBarrelBlueprint` → `.../1999EntHybridPistolBarrel`,
+    /// "Riot-848 Barrel"; WFCD lists only the part for some weapons).
+    pub fn unlisted_blueprint_target<'a>(&self, path: &'a str) -> Option<&'a str> {
+        if self.items.contains_key(path) {
+            return None;
+        }
+        path.strip_suffix("Blueprint").filter(|stem| self.items.contains_key(*stem))
+    }
+
+    /// The WFCD file of the item a build part (or its unlisted blueprint) belongs to.
+    pub fn parent_file_of_part(&self, path: &str) -> Option<&str> {
+        self.parent_file(path).or_else(|| self.unlisted_blueprint_target(path).and_then(|t| self.parent_file(t)))
+    }
+
+    /// A readable name for any path: the WFCD name if known, then the name of what an unlisted
+    /// blueprint builds, then a Warframe blueprint name from its codename, otherwise one made
+    /// from the path.
     pub fn display_name(&self, path: &str) -> String {
         if let Some(info) = self.get(path) {
             return info.name.clone();
+        }
+        if let Some(target) = self.unlisted_blueprint_target(path) {
+            return format!("{} Blueprint", self.items[target].name);
+        }
+        if let Some(name) = unlisted_name(path) {
+            return name.to_string();
+        }
+        // "ChromaBeaconCBlueprint" builds "ChromaBeaconCComponent".
+        if let Some(name) = path.strip_suffix("Blueprint").and_then(|s| unlisted_name(&format!("{s}Component"))) {
+            return format!("{name} Blueprint");
         }
         self.frame_blueprint_name(path).unwrap_or_else(|| fallback_name(path))
     }
@@ -1009,6 +1048,34 @@ mod tests {
         assert_eq!(tau.name, "Tauforged Crimson Archon Shard");
         assert_eq!(tau.underlay.as_deref(), Some("ArchonShardAmar.png"));
         assert!(index.get("/N/ArchonCrystalAmar").unwrap().underlay.is_none());
+    }
+
+    #[test]
+    fn unlisted_part_blueprints_take_the_part_name() {
+        // Inventory 2026-10-27: Riot-848 part blueprints are `...BarrelBlueprint`, but WFCD lists
+        // only `...Barrel`; the name was made from the path ("1999 Ent Hybrid Pistol ...").
+        let secondary = r#"[{"uniqueName":"/Lotus/Weapons/Tenno/Pistols/1999EntHybridPistolWeapon/1999EntHybridPistolWeapon",
+            "name":"Riot-848","category":"Secondary",
+            "components":[{"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/1999EntHybridPistolBarrel"}]}]"#;
+        let components = r#"[{"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/1999EntHybridPistolBarrel","name":"Barrel"}]"#;
+        let index = ItemIndex::build(&[
+            ("Components".to_string(), components.as_bytes().to_vec()),
+            ("Secondary".to_string(), secondary.as_bytes().to_vec()),
+        ]);
+        let bp = "/Lotus/Types/Recipes/Weapons/WeaponParts/1999EntHybridPistolBarrelBlueprint";
+        assert_eq!(index.display_name(bp), "Riot-848 Barrel Blueprint");
+        assert_eq!(index.parent_file_of_part(bp), Some("Secondary"));
+        assert_eq!(index.unlisted_blueprint_target("/Lotus/Types/Recipes/Weapons/WeaponParts/1999EntHybridPistolBarrel"), None);
+    }
+
+    #[test]
+    fn quest_items_wfcd_lacks_have_names() {
+        // Inventory 2026-10-27: shown as "Chroma Beacon CComponent".
+        let index = ItemIndex::build(&files());
+        let wr = "/Lotus/Types/Recipes/WarframeRecipes/";
+        assert_eq!(index.display_name(&format!("{wr}ChromaBeaconCComponent")), "Chroma Mark");
+        assert_eq!(index.display_name(&format!("{wr}ChromaBeaconAComponent")), "Scorched Beacon");
+        assert_eq!(index.display_name(&format!("{wr}ChromaBeaconBBlueprint")), "Chroma Signal Blueprint");
     }
 
     #[test]

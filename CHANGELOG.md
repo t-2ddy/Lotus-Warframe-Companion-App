@@ -5,6 +5,21 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-10-27
+
+### Added
+- Chat page: save lines to paste into the game's Trade and Recruit chats, each with a Copy
+  button and an optional title, plus a Notes box. Typing "[" suggests tradable item names (the
+  game turns them into item links), an emoji picker adds the game's chat emojis, and Trade lines
+  show a character count that warns past the chat's 180-character limit. Kept in this app only.
+
+### Fixed
+- Part blueprints WFCD doesn't list (Riot-848's Barrel and others) showed names made from their
+  path ("1999 Ent Hybrid Pistol Barrel Blueprint"); they're now named after the part they build
+  and sorted under its weapon.
+- The New Strange quest items (Scorched Beacon, Chroma Signal, Chroma Mark) and their blueprints
+  showed as "Chroma Beacon CComponent" and similar.
+
 ## [0.1.13] — 2026-10-25
 
 ### Fixed
@@ -326,7 +341,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.13...v1.0.0
 [0.1.13]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.10...v0.1.11

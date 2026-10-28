@@ -7,6 +7,14 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.0.0",
+    fixes: [
+      "New Chat page: save your Trade and Recruit messages and copy them into the game in one click, with item name and emoji suggestions.",
+      "Part blueprints like Riot-848's Barrel show their real names instead of names made from game file paths.",
+      "The New Strange quest items show as Scorched Beacon, Chroma Signal and Chroma Mark.",
+    ],
+  },
+  {
     version: "0.1.13",
     fixes: [
       "Riven Ammo Efficiency shows the right way round: \"+55.5% Ammo Efficiency\" is a positive, on the Rivens page and in the overlay.",

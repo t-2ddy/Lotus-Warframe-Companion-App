@@ -30,7 +30,7 @@
     { label: "Inventory", icon: Backpack, href: "/inventory" },
     { label: "Mastery Helper", icon: "/icons/mastered.png", href: "/mastery", iconScale: 1.15 },
     { label: "Rivens", icon: Riven, href: "/rivens" },
-    { label: "Chat", icon: Chat },
+    { label: "Chat", icon: Chat, href: "/chat" },
     { label: "Ducanator", icon: Ducat, href: "/ducanator", iconScale: 1.15 },
     { label: "Tools", icon: Wrench, href: "/tools" },
   ];

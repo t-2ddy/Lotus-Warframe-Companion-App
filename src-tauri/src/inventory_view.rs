@@ -346,7 +346,7 @@ fn part_tile(index: &ItemIndex, path: &str, count: i64, blueprint: bool) -> Tile
         count,
         kind: if blueprint { "Blueprint" } else { "Part" }.to_string(),
         prime: name.contains("Prime"),
-        builds: index.parent_file(path).map_or_else(|| builds_from_path(path), builds_from_file),
+        builds: index.parent_file_of_part(path).map_or_else(|| builds_from_path(path), builds_from_file),
         name,
     }
 }

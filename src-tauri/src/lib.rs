@@ -80,6 +80,7 @@ pub fn run() {
             acquisition::get_item_detail,
             inventory_view::get_inventory,
             market::request_prices,
+            market::item_names,
             ducanator::get_ducanator,
             mastery::get_mastery,
             arbitration::get_arbitrations,

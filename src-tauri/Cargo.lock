@@ -4905,7 +4905,7 @@ dependencies = [
 
 [[package]]
 name = "wf-companion"
-version = "0.1.13"
+version = "1.0.0"
 dependencies = [
  "lzma-rs",
  "memchr",

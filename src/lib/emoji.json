@@ -1,0 +1,497 @@
+[
+ {
+  "name": "Alliance",
+  "code": "alliance",
+  "shortcut": null
+ },
+ {
+  "name": "Angel",
+  "code": "angel",
+  "shortcut": null
+ },
+ {
+  "name": "Angry",
+  "code": "angry",
+  "shortcut": ">:("
+ },
+ {
+  "name": "Awe",
+  "code": "awe",
+  "shortcut": ":o"
+ },
+ {
+  "name": "Awkward",
+  "code": "awkward",
+  "shortcut": ":|"
+ },
+ {
+  "name": "Baro",
+  "code": "baro",
+  "shortcut": null
+ },
+ {
+  "name": "Blush",
+  "code": "blush",
+  "shortcut": null
+ },
+ {
+  "name": "Clan",
+  "code": "clan",
+  "shortcut": null
+ },
+ {
+  "name": "Clap",
+  "code": "clap",
+  "shortcut": null
+ },
+ {
+  "name": "Clem",
+  "code": "clem",
+  "shortcut": null
+ },
+ {
+  "name": "Community",
+  "code": "community",
+  "shortcut": null
+ },
+ {
+  "name": "Conclave",
+  "code": "conclave",
+  "shortcut": null
+ },
+ {
+  "name": "Confounded",
+  "code": "confounded",
+  "shortcut": null
+ },
+ {
+  "name": "Confused",
+  "code": "confused",
+  "shortcut": null
+ },
+ {
+  "name": "Cool",
+  "code": "cool",
+  "shortcut": "8)"
+ },
+ {
+  "name": "Corpus",
+  "code": "corpus",
+  "shortcut": null
+ },
+ {
+  "name": "Council",
+  "code": "council",
+  "shortcut": null
+ },
+ {
+  "name": "Crazy",
+  "code": "crazy",
+  "shortcut": null
+ },
+ {
+  "name": "Credits",
+  "code": "credits",
+  "shortcut": null
+ },
+ {
+  "name": "Crylaugh",
+  "code": "crylaugh",
+  "shortcut": null
+ },
+ {
+  "name": "Ctc",
+  "code": "ctc",
+  "shortcut": null
+ },
+ {
+  "name": "Devil",
+  "code": "devil",
+  "shortcut": null
+ },
+ {
+  "name": "Dm",
+  "code": "dm",
+  "shortcut": null
+ },
+ {
+  "name": "Ducats",
+  "code": "ducats",
+  "shortcut": null
+ },
+ {
+  "name": "Expressionless",
+  "code": "expressionless",
+  "shortcut": null
+ },
+ {
+  "name": "Eyes",
+  "code": "eyes",
+  "shortcut": null
+ },
+ {
+  "name": "Facepalm",
+  "code": "facepalm",
+  "shortcut": null
+ },
+ {
+  "name": "Fist",
+  "code": "fist",
+  "shortcut": null
+ },
+ {
+  "name": "Fuming",
+  "code": "fuming",
+  "shortcut": null
+ },
+ {
+  "name": "Grineer",
+  "code": "grineer",
+  "shortcut": null
+ },
+ {
+  "name": "Grustrag",
+  "code": "grustrag",
+  "shortcut": null
+ },
+ {
+  "name": "Heart",
+  "code": "heart",
+  "shortcut": "<3"
+ },
+ {
+  "name": "Heartbroken",
+  "code": "heartbroken",
+  "shortcut": "</3"
+ },
+ {
+  "name": "Hearteyes",
+  "code": "hearteyes",
+  "shortcut": null
+ },
+ {
+  "name": "Hexis",
+  "code": "hexis",
+  "shortcut": null
+ },
+ {
+  "name": "Highfive",
+  "code": "highfive",
+  "shortcut": null
+ },
+ {
+  "name": "Infested",
+  "code": "infested",
+  "shortcut": null
+ },
+ {
+  "name": "Inlove",
+  "code": "inlove",
+  "shortcut": null
+ },
+ {
+  "name": "Kiss",
+  "code": "kiss",
+  "shortcut": ":*"
+ },
+ {
+  "name": "Knockedout",
+  "code": "knockedout",
+  "shortcut": null
+ },
+ {
+  "name": "Laugh",
+  "code": "laugh",
+  "shortcut": "XD"
+ },
+ {
+  "name": "Loka",
+  "code": "loka",
+  "shortcut": null
+ },
+ {
+  "name": "Lotus",
+  "code": "lotus",
+  "shortcut": null
+ },
+ {
+  "name": "Madurai",
+  "code": "madurai",
+  "shortcut": null
+ },
+ {
+  "name": "Mask",
+  "code": "mask",
+  "shortcut": null
+ },
+ {
+  "name": "Meridian",
+  "code": "meridian",
+  "shortcut": null
+ },
+ {
+  "name": "Mindblown",
+  "code": "mindblown",
+  "shortcut": null
+ },
+ {
+  "name": "Monocle",
+  "code": "monocle",
+  "shortcut": null
+ },
+ {
+  "name": "Moon",
+  "code": "moon",
+  "shortcut": null
+ },
+ {
+  "name": "Naramon",
+  "code": "naramon",
+  "shortcut": null
+ },
+ {
+  "name": "Nauseated",
+  "code": "nauseated",
+  "shortcut": null
+ },
+ {
+  "name": "Nerd",
+  "code": "nerd",
+  "shortcut": null
+ },
+ {
+  "name": "Orokin",
+  "code": "orokin",
+  "shortcut": null
+ },
+ {
+  "name": "Painful",
+  "code": "painful",
+  "shortcut": null
+ },
+ {
+  "name": "Party",
+  "code": "party",
+  "shortcut": null
+ },
+ {
+  "name": "Peace",
+  "code": "peace",
+  "shortcut": null
+ },
+ {
+  "name": "Perrin",
+  "code": "perrin",
+  "shortcut": null
+ },
+ {
+  "name": "Platinum",
+  "code": "platinum",
+  "shortcut": null
+ },
+ {
+  "name": "Poop",
+  "code": "poop",
+  "shortcut": null
+ },
+ {
+  "name": "Recruiting",
+  "code": "recruiting",
+  "shortcut": null
+ },
+ {
+  "name": "Redveil",
+  "code": "redveil",
+  "shortcut": null
+ },
+ {
+  "name": "Region",
+  "code": "region",
+  "shortcut": null
+ },
+ {
+  "name": "Rofl",
+  "code": "rofl",
+  "shortcut": null
+ },
+ {
+  "name": "Sad",
+  "code": "sad",
+  "shortcut": ":("
+ },
+ {
+  "name": "Sadcry",
+  "code": "sadcry",
+  "shortcut": ":'("
+ },
+ {
+  "name": "Satisfied",
+  "code": "satisfied",
+  "shortcut": ":D"
+ },
+ {
+  "name": "Scared",
+  "code": "scared",
+  "shortcut": null
+ },
+ {
+  "name": "Sealedlips",
+  "code": "sealedlips",
+  "shortcut": null
+ },
+ {
+  "name": "Sentient",
+  "code": "sentient",
+  "shortcut": null
+ },
+ {
+  "name": "Shock",
+  "code": "shock",
+  "shortcut": "o.O"
+ },
+ {
+  "name": "Simaris",
+  "code": "simaris",
+  "shortcut": null
+ },
+ {
+  "name": "Sleep",
+  "code": "sleep",
+  "shortcut": null
+ },
+ {
+  "name": "Smile",
+  "code": "smile",
+  "shortcut": ":)"
+ },
+ {
+  "name": "Squad",
+  "code": "squad",
+  "shortcut": null
+ },
+ {
+  "name": "Stalker",
+  "code": "stalker",
+  "shortcut": null
+ },
+ {
+  "name": "Standing",
+  "code": "standing",
+  "shortcut": null
+ },
+ {
+  "name": "Stareyes",
+  "code": "stareyes",
+  "shortcut": null
+ },
+ {
+  "name": "Suda",
+  "code": "suda",
+  "shortcut": null
+ },
+ {
+  "name": "Sun",
+  "code": "sun",
+  "shortcut": null
+ },
+ {
+  "name": "Surprised",
+  "code": "surprised",
+  "shortcut": null
+ },
+ {
+  "name": "Suspicion",
+  "code": "suspicion",
+  "shortcut": ":/"
+ },
+ {
+  "name": "Sweatsmile",
+  "code": "sweatsmile",
+  "shortcut": null
+ },
+ {
+  "name": "Tdm",
+  "code": "tdm",
+  "shortcut": null
+ },
+ {
+  "name": "Think",
+  "code": "think",
+  "shortcut": null
+ },
+ {
+  "name": "Thumbsdown",
+  "code": "thumbsdown",
+  "shortcut": null
+ },
+ {
+  "name": "Thumbsup",
+  "code": "thumbsup",
+  "shortcut": null
+ },
+ {
+  "name": "Tired",
+  "code": "tired",
+  "shortcut": null
+ },
+ {
+  "name": "Tongue",
+  "code": "tongue",
+  "shortcut": ":P"
+ },
+ {
+  "name": "Trading",
+  "code": "trading",
+  "shortcut": null
+ },
+ {
+  "name": "Truemaster",
+  "code": "truemaster",
+  "shortcut": null
+ },
+ {
+  "name": "Truemasteralt",
+  "code": "truemasteralt",
+  "shortcut": null
+ },
+ {
+  "name": "Unairu",
+  "code": "unairu",
+  "shortcut": null
+ },
+ {
+  "name": "Vazarin",
+  "code": "vazarin",
+  "shortcut": null
+ },
+ {
+  "name": "Vomit",
+  "code": "vomit",
+  "shortcut": null
+ },
+ {
+  "name": "Wave",
+  "code": "wave",
+  "shortcut": null
+ },
+ {
+  "name": "Whew",
+  "code": "whew",
+  "shortcut": null
+ },
+ {
+  "name": "Wink",
+  "code": "wink",
+  "shortcut": ";)"
+ },
+ {
+  "name": "Zanuka",
+  "code": "zanuka",
+  "shortcut": null
+ },
+ {
+  "name": "Zenurik",
+  "code": "zenurik",
+  "shortcut": null
+ }
+]

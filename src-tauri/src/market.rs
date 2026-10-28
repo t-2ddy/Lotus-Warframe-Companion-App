@@ -97,6 +97,20 @@ pub fn parse_items(bytes: &[u8]) -> Result<HashMap<String, String>, String> {
         .collect())
 }
 
+/// Parses `/v2/items` into the English item names, sorted (the names chat links use:
+/// "Saryn Prime Set", "Lith A1 Relic").
+pub fn parse_names(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let doc: Value = serde_json::from_slice(bytes).map_err(|e| format!("item list: {e}"))?;
+    let list = doc.get("data").and_then(Value::as_array).ok_or("item list: no data array")?;
+    let mut names: Vec<String> = list
+        .iter()
+        .filter_map(|i| Some(i.pointer("/i18n/en/name")?.as_str()?.to_string()))
+        .collect();
+    names.sort_unstable_by_key(|n| n.to_lowercase());
+    names.dedup();
+    Ok(names)
+}
+
 /// Parses `/v2/orders/item/{slug}/top` into (lowest sell, highest buy).
 pub fn parse_top(bytes: &[u8]) -> Result<(Option<i64>, Option<i64>), String> {
     let doc: Value = serde_json::from_slice(bytes).map_err(|e| format!("orders: {e}"))?;
@@ -375,6 +389,13 @@ pub fn request_prices(
     market.request(&shared, keys)
 }
 
+/// Tradable item names for the Chat page's "[" suggestions, from the cached item list (empty
+/// until it has been downloaded once).
+#[tauri::command]
+pub fn item_names(market: State<'_, Arc<Market>>) -> Vec<String> {
+    std::fs::read(market.dir.join("items.json")).ok().and_then(|b| parse_names(&b).ok()).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,6 +408,15 @@ mod tests {
         let slugs = parse_items(json).unwrap();
         assert_eq!(slugs.len(), 1);
         assert_eq!(slugs["/Lotus/Upgrades/Mods/Rifle/WeaponDamageAmountMod"], "serration");
+    }
+
+    #[test]
+    fn lists_item_names_sorted() {
+        let json = br#"{"data":[
+            {"slug":"saryn_prime_set","i18n":{"en":{"name":"Saryn Prime Set"}}},
+            {"slug":"ash_prime_set","i18n":{"en":{"name":"Ash Prime Set"}}},
+            {"slug":"no_name"}]}"#;
+        assert_eq!(parse_names(json).unwrap(), ["Ash Prime Set", "Saryn Prime Set"]);
     }
 
     #[test]
