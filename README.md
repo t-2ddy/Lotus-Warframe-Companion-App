@@ -34,6 +34,8 @@ input to the game and never uploads your data.
 | **Mastery Helper:** progress by category and the fastest ways to gain mastery | **Rivens:** every riven with roll letters, grade and the weapon's ideal stats |
 | ![Ducanator: ducats per platinum](assets/screenshots/ducanator.png) | ![Inventory: parts, relics, mods, arcanes](assets/screenshots/inventory.png) |
 | **Ducanator:** which prime parts to sell to Baro, by ducats per platinum | **Inventory:** parts, relics, mods (with prices), arcanes and more |
+| ![Chat: saved trade messages with the emoji picker](assets/screenshots/chat.png) | |
+| **Chat:** saved Trade and Recruit messages, ready to copy, with the game's emojis | |
 
 ## Install
 
