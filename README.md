@@ -13,7 +13,7 @@ A Windows desktop companion app for **Warframe**, heavily inspired by
 closely, rebuilt from scratch as a standalone app (no AlecaFrame code, branding or artwork). It
 keeps your
 inventory up to date on its own, works out what you still need for mastery, prices your items on
-warframe.market, grades your rivens, and draws helper panels over the game for riven cards and
+warframe.market, grades your rivens, keeps your trade chat messages ready to paste, and draws helper panels over the game for riven cards and
 Void Fissure rewards.
 
 Everything runs on your PC. The app never writes to the game, never injects code, never sends
@@ -56,8 +56,8 @@ Lotus updates itself: when a new version is out, a bar at the top offers **Updat
 - **Overlay reading is tuned on 16:9 screens at 100% scaling.** Other resolutions and Windows
   display scaling may misread. Please report it if so.
 - **Inventory updates at login and mission end**, not live during a mission.
-- **Warframe Market page:** not built yet ("Soon"). Prices already show in Inventory, Ducanator
-  and the overlays.
+- **No warframe.market page:** Lotus doesn't list or buy items for you. Prices show in Inventory,
+  Ducanator and the overlays.
 
 ## FAQ
 
@@ -114,6 +114,9 @@ Windows Settings → Apps → Lotus → Uninstall. To remove your data too, dele
   new rolls at the reroll screen.
 - **Relic picks in game.** At the end of a fissure, a panel under each reward card shows its plat
   and ducat value, whether it's vaulted, and how many you own against what the set needs.
+- **Trade chat ready.** Save your Trade and Recruit messages and copy them into the game in one
+  click, with item name suggestions (the game's item links), the game's emojis and a counter for
+  Trade chat's 180-character limit.
 - **Standalone and private.** No Overwolf, no ads, no account. Your history stays in one local
   SQLite file.
 
