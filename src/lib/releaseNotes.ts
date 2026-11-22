@@ -7,6 +7,14 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.0.1",
+    fixes: [
+      "Closing Lotus now quits it instead of leaving it running in the background.",
+      "The riven overlay reads more cards right: a faction multiplier like \"x0.61\" no longer goes missing, and a stat hidden behind its icon is no longer joined to the line above.",
+      "Misread riven names are shown as the real name, and rivens for brand-new weapons like the Nunchasa work.",
+    ],
+  },
+  {
     version: "1.0.0",
     fixes: [
       "New Chat page: save your Trade and Recruit messages and copy them into the game in one click, with item name and emoji suggestions.",

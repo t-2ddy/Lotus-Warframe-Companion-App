@@ -1,6 +1,6 @@
 {
   "name": "lotus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lotus: a Warframe companion app",
   "type": "module",
   "scripts": {

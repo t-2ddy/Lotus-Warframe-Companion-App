@@ -5,6 +5,21 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-11-21
+
+### Fixed
+- Closing Lotus now quits it. Before, the hidden game overlay window kept the app running in
+  the background (still listening to the game log and refreshing prices) until it was ended
+  in Task Manager.
+- Riven overlay: a faction multiplier read as "xO.61" (letter O) no longer drops the negative
+  stat, which made the other numbers fit no rank.
+- Riven overlay: a stat whose number hid behind its icon right after a bracketed label
+  ("Critical Chance (x2 for Heavy Attacks)" then "Range") is no longer glued onto that label.
+- Riven overlay: a misread riven name ("Hexa-critat10", "Forti-loctldo") is shown as the real
+  name its stats spell.
+- Riven overlay: rivens for weapons too new for Lotus's data (Nunchasa) are worked out from the
+  game log's weapon.
+
 ## [1.0.0] — 2026-10-27
 
 ### Added
@@ -341,7 +356,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.13...v1.0.0
 [0.1.13]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.11...v0.1.12
