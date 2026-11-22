@@ -189,6 +189,101 @@ fn image_cases() {
     score("images", results);
 }
 
+/// A card from the course dataset (`wf-rivenOCR/data/labels.jsonl`, hand-checked).
+#[derive(Deserialize)]
+struct CourseLabel {
+    capture_id: String,
+    riven_type: String,
+    title: String,
+    stats: Vec<CourseStat>,
+    status: String,
+}
+
+#[derive(Deserialize)]
+struct CourseStat {
+    value: f64,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct CourseMeta {
+    weapon: Option<String>,
+    text_box: (i32, i32, i32, i32),
+}
+
+/// The ~400 chat-link cards of the course project (`RIVEN_COURSE_DATA`, default
+/// `../wf-rivenOCR/data` next to this repo): each `card.png` cropped to the overlay's own inspect
+/// region (`meta.json` → `text_box`), then read and worked out as the overlay does. Report only:
+/// prints every miss, never fails (the set isn't in known-failures.txt).
+#[test]
+#[ignore = "slow: Windows OCR on ~400 cards; needs the course dataset"]
+fn course_cards() {
+    let root = std::env::var("RIVEN_COURSE_DATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../wf-rivenOCR/data"));
+    let Ok(text) = std::fs::read_to_string(root.join("labels.jsonl")) else {
+        println!("no course dataset at {}", root.display());
+        return;
+    };
+    let data = rivens::bundled_flat(); // as the app runs it
+    let verbose = std::env::var("RIVEN_COURSE_VERBOSE").is_ok();
+    let (mut passed, mut total) = (0, 0);
+    let mut misses: Vec<(String, String)> = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let label: CourseLabel = serde_json::from_str(line).expect("labels.jsonl row");
+        if label.status != "ok" {
+            continue;
+        }
+        let dir = root.join("raw").join(&label.capture_id);
+        let meta: CourseMeta = serde_json::from_str(&std::fs::read_to_string(dir.join("meta.json")).unwrap()).unwrap();
+        let img = super::ocr::decode_file(&dir.join("card.png")).expect("card.png decodes");
+        let (x, y, w, h) = meta.text_box;
+        let reads: Vec<Vec<String>> =
+            read_variants(&screen::ocr_variants(&screen::crop(&img, x, y, w, h))).into_iter().filter_map(Result::ok).collect();
+        let cards: Vec<Card> = reads.iter().filter_map(|l| parse_card(l)).collect();
+        total += 1;
+        match check_course(&data, &label, meta.weapon.as_deref(), consensus(&cards)) {
+            Ok(()) => passed += 1,
+            Err(why) => {
+                // RIVEN_COURSE_VERBOSE=1: every OCR copy's lines too.
+                let raw = if verbose { format!("
+      reads: {reads:?}") } else { String::new() };
+                misses.push((label.capture_id.clone(), format!("{} [{}]: {why}{raw}", label.title, label.riven_type)));
+            }
+        }
+    }
+    println!("course: {passed}/{total} cards worked out right");
+    for (id, why) in &misses {
+        println!("  MISS {id}: {why}");
+    }
+}
+
+fn check_course(data: &RivenData, label: &CourseLabel, weapon: Option<&str>, card: Option<Card>) -> Result<(), String> {
+    let card = card.ok_or("not read as a card")?;
+    let want_name = label.title.rsplit(' ').next().unwrap_or_default();
+    let types = [label.riven_type.clone()];
+    let (r, _) = card::work_out(data, &GradeSheet::default(), &card, &types, weapon, None, |_| false)
+        .map_err(|e| format!("{} ({:?})", e.join("; "), card.stat_lines))?;
+    let title_ok = card::norm(&r.view.name) == card::norm(want_name);
+    let shown: Vec<&str> = r.view.stats.iter().map(|s| s.text.as_str()).collect();
+    if shown.len() != label.stats.len() {
+        return Err(format!("{} stats {shown:?}", shown.len()));
+    }
+    for (s, want) in r.view.stats.iter().zip(&label.stats) {
+        let got = parse_stat(&s.text);
+        let value_ok = s.unread || got.as_ref().is_some_and(|p| (p.value - want.value).abs() < 0.15);
+        let name_ok = card::norm(&s.text).contains(&card::norm(&want.name));
+        if !value_ok || !name_ok {
+            return Err(format!("{:?} for {:+} {} {shown:?}", s.text, want.value, want.name));
+        }
+    }
+    // The stats came out right; the name is shown as read.
+    if !title_ok {
+        return Err(format!("title only {:?} (read {:?})", r.view.name, card.title));
+    }
+    Ok(())
+}
+
 fn dimmed(img: &screen::Image, brightness: f32) -> screen::Image {
     let mut bgra = img.bgra.clone();
     for p in bgra.chunks_exact_mut(4) {

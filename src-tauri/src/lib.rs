@@ -55,6 +55,13 @@ pub fn run() {
                 .with_denylist(&[overlay::WINDOW])
                 .build(),
         )
+        // Closing the main window quits Lotus. Without this the hidden overlay window keeps the
+        // app (and its log listener, market and image threads) running in the background.
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                window.app_handle().exit(0);
+            }
+        })
         .manage(Arc::new(pipeline::Shared::default()))
         // Item images: the page loads `http://wfimg.localhost/<imageName>` (see images.rs).
         .register_asynchronous_uri_scheme_protocol("wfimg", serve_image)

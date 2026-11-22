@@ -554,6 +554,37 @@ fn riven_name(kind: &RivenType, buffs: &[Roll]) -> String {
     name
 }
 
+/// Every name a riven with these positives can have (the game orders the parts by roll), as
+/// [`riven_name`] spells them. Empty if a tag isn't one of `kind`'s stats.
+pub fn name_spellings(kind: &RivenType, tags: &[&str]) -> Vec<String> {
+    if tags.is_empty() || tags.iter().any(|t| !kind.stats.contains_key(*t)) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut order: Vec<usize> = (0..tags.len()).collect();
+    permute(&mut order, 0, &mut |o| {
+        let buffs: Vec<Roll> =
+            o.iter().enumerate().map(|(i, &k)| Roll { tag: tags[k].to_string(), value: (tags.len() - i) as u32 }).collect();
+        let name = riven_name(kind, &buffs);
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    });
+    out
+}
+
+fn permute(items: &mut Vec<usize>, k: usize, visit: &mut impl FnMut(&[usize])) {
+    if k == items.len() {
+        visit(items);
+        return;
+    }
+    for i in k..items.len() {
+        items.swap(k, i);
+        permute(items, k + 1, visit);
+        items.swap(k, i);
+    }
+}
+
 /// Stat values at `rank` (RivenParser.js `parseRiven`), with each roll's quality and range.
 fn stats(data: &RivenData, kind: &RivenType, fp: &Fingerprint, disposition: f64, rank: u32) -> Vec<StatView> {
     let atten = 1.5 * disposition * 10.0; // specific-fit attenuation × disposition × riven base drain

@@ -76,7 +76,7 @@ const MAX_STAT: f64 = 1000.0;
 /// Finds the number in a stat line: a sign (`+`, `-`, `x`) followed by digits, tolerating stray
 /// spaces (`+191 .1%`). Returns (value, unit, label text).
 fn stat_line(line: &str) -> Option<(f64, Unit, String)> {
-    let chars: Vec<char> = line.chars().map(|c| if c == '×' { 'x' } else { c }).collect();
+    let mut chars: Vec<char> = line.chars().map(|c| if c == '×' { 'x' } else { c }).collect();
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
@@ -92,6 +92,15 @@ fn stat_line(line: &str) -> Option<(f64, Unit, String)> {
             let mut j = i + 1;
             while j < chars.len() && chars[j] == ' ' {
                 j += 1;
+            }
+            // A multiplier below 1 with its zero read as the letter ("xO.61 Damage to Corpus").
+            // Most copies of a card can read it that way, which lost the negative and made the
+            // rest not fit any rank.
+            let o_for_zero = matches!(c, 'x' | 'X')
+                && chars.get(j).is_some_and(|d| matches!(d, 'O' | 'o'))
+                && chars.get(j + 1).is_some_and(|d| matches!(d, '.' | ','));
+            if o_for_zero {
+                chars[j] = '0';
             }
             if j < chars.len() && chars[j].is_ascii_digit() {
                 let mut num = String::new();
@@ -327,6 +336,18 @@ pub fn parse_card(lines: &[String]) -> Option<Card> {
             // three positives), its "-" lost with the icon.
             stats.push(CardStat { value: -value, unit, label });
             stat_lines.push(format!("-{line}"));
+        } else if mastery.is_none()
+            && stat_lines.last().is_some_and(|l| l.trim_end().ends_with(')'))
+            && looks_like_words(line)
+            && !compact.starts_with("MR")
+        {
+            // A label closed by its bracket doesn't go on: a line of words after it is the next
+            // stat with its number lost behind the icon ("(x2 for Heavy Attacks)" / "Range",
+            // course dataset 2026-11-19: joined, the card lost a stat). Not read, like a faction
+            // label on its own.
+            lost_numbers += 1;
+            stats.push(CardStat { value: f64::NAN, unit: Unit::Plain, label: norm(line) });
+            stat_lines.push(line.to_string());
         } else if mastery.is_none() && !compact.starts_with("MR") && looks_like_words(line.trim_end_matches(')')) {
             // A long label wraps onto its own line ("-46.2% Magazine" / "Capacity", "Fire Rate
             // (x2 for" / "Bows)").
@@ -496,6 +517,31 @@ pub fn match_label(kind: &RivenType, ocr: &str) -> Option<String> {
     match near.as_slice() {
         [(d, t), rest @ ..] if rest.iter().all(|(d2, t2)| d2 > d || t2 == t) => Some((*t).clone()),
         _ => None,
+    }
+}
+
+/// The riven's name for the overlay: as read when it's a real spelling of its positives,
+/// otherwise the spelling OCR nearly read ("Hexa-critat10", "Forti-loctldo", or "Hex at r On"
+/// with the weapon lost). Course dataset 2026-11-20: 6 of 400 names were shown misspelled.
+fn shown_name(kind: &RivenType, card: &Card, positives: &[&str]) -> String {
+    let read = card.riven_name();
+    let names = rivens::name_spellings(kind, positives);
+    let read_n = norm(read);
+    if names.is_empty() || names.iter().any(|n| norm(n) == read_n) {
+        return read.to_string();
+    }
+    // The title broken into words: the name is the end of it.
+    let whole = norm(&card.title);
+    if let [n] = names.iter().filter(|n| whole.ends_with(&norm(n))).collect::<Vec<_>>()[..] {
+        return n.clone();
+    }
+    let read_c: Vec<char> = read_n.chars().collect();
+    let mut near: Vec<(usize, &String)> =
+        names.iter().map(|n| (edit_distance(&read_c, &norm(n).chars().collect::<Vec<_>>()), n)).filter(|(d, _)| *d <= 2).collect();
+    near.sort();
+    match near.as_slice() {
+        [(d, n), rest @ ..] if rest.iter().all(|(d2, _)| d2 > d) => (*n).clone(),
+        _ => read.to_string(),
     }
 }
 
@@ -727,7 +773,11 @@ pub fn rebuild(
     rank: Option<u32>,
 ) -> Result<Identified, String> {
     let kind = data.types.get(riven_type).ok_or_else(|| format!("unknown riven type {riven_type}"))?;
-    let compat = weapon_path(data, card, logged_weapon).ok_or_else(|| format!("unknown weapon \"{}\"", card.weapon_name()))?;
+    // A weapon newer than both the export and the wiki's families (Nunchasa, course dataset
+    // 2026-11-19): the game log still names it, and every weapon is at the same disposition.
+    let compat = weapon_path(data, card, logged_weapon)
+        .or_else(|| logged_weapon.filter(|p| p.starts_with("/Lotus/Weapons/")).map(String::from))
+        .ok_or_else(|| format!("unknown weapon \"{}\"", card.weapon_name()))?;
     let disposition = shown_disposition(data, card, logged_weapon)
         .unwrap_or_else(|| data.weapons.get(&compat).map_or(rivens::DISPOSITION, |w| w.disposition));
 
@@ -1034,6 +1084,12 @@ fn rebuild_tagged(
     if let Some(n) = card.rerolls {
         fp["rerolls"] = json!(n);
     }
+    // A positive OCR couldn't name (`pending`) leaves the name as read.
+    let positives: Vec<&str> = if pending.iter().any(|p| p.2) {
+        Vec::new()
+    } else {
+        lines.iter().filter(|l| l.buff).map(|l| l.tag.as_str()).chain(unread.iter().filter(|u| u.is_buff).map(|u| u.tag.as_str())).collect()
+    };
     let owned = OwnedRiven {
         id: format!("screen:{}", card.title),
         item_type: format!("/Lotus/Upgrades/Mods/Randomized/{riven_type}"),
@@ -1042,7 +1098,10 @@ fn rebuild_tagged(
     // The riven with its numbers at rank `show`: the card's rank, and max rank for the overlay.
     let build = |show: u32| -> Result<RivenView, String> {
         let mut view = rivens::view_with(data, sheet, &owned, show, Some(disposition)).ok_or("couldn't build the riven")?;
-        view.name = card.riven_name().to_string(); // the game's name, as shown
+        view.name = shown_name(kind, card, &positives); // the game's name, as shown
+        if !data.weapons.contains_key(&compat) && !card.weapon_name().is_empty() {
+            view.weapon = card.weapon_name().to_string(); // not "DuelistBow"
+        }
         if !pending.is_empty() || !unread.is_empty() {
             // An unread stat's range at this rank, from its worst to its best roll.
             let unread: Vec<(Option<usize>, rivens::StatView)> = unread
@@ -1757,6 +1816,65 @@ mod slash_icon_tests {
         assert_eq!(bad.lost_numbers, 1);
         // Three digits are fine.
         assert_eq!(card("Torid Crita-acriata / +198.6% Critical Chance / +152.1% Critical Damage").lost_numbers, 0);
+    }
+
+    #[test]
+    fn multiplier_zero_read_as_letter_o() {
+        // Course dataset 2026-11-19 (Akarius Acri-satipia): most OCR copies read "x0.61" as
+        // "xO.61", so the negative was lost and the positives fit no rank.
+        let c = card("Akarius Acri-satipia / +109.1% Critical Damage / +52.9% Ammo Efficiency / +141.7% Multishot / xO.61 Damage to Corpus / MR9");
+        assert_eq!(c.stats.len(), 4);
+        assert_eq!((c.stats[3].value, c.stats[3].unit), (0.61, Unit::Times));
+        // A word's "x" before a letter O is still not a sign.
+        assert!(parse_stat("Box Only").is_none());
+    }
+
+    #[test]
+    fn misread_names_snap_to_a_spelling() {
+        let d = rivens::bundled();
+        let kind = &d.types["LotusRifleRandomModRare"];
+        let tags = ["WeaponCritChanceMod", "WeaponCritDamageMod", "WeaponFireRateMod"];
+        let names = rivens::name_spellings(kind, &tags);
+        assert_eq!(names.len(), 6, "{names:?}");
+        let real = names[0].clone();
+        let titled = |t: &str| Card { title: t.into(), ..Card::empty() };
+        // As read when it's a real spelling, even one the rolls wouldn't have ordered that way.
+        assert_eq!(shown_name(kind, &titled(&format!("Braton {}", names[3])), &tags), names[3]);
+        // One letter misread ("i" as "l", "o" as "0").
+        let typo: String = real.chars().enumerate().map(|(i, c)| if i == real.len() - 2 { '1' } else { c }).collect();
+        assert_eq!(shown_name(kind, &titled(&format!("Braton {typo}")), &tags), real);
+        // Broken into words, the weapon lost.
+        let spaced: String = real.chars().flat_map(|c| [c, ' ']).collect();
+        assert_eq!(shown_name(kind, &titled(&spaced), &tags), real);
+        // Too far off to say: left as read.
+        assert_eq!(shown_name(kind, &titled("Braton Xyzzy"), &tags), "Xyzzy");
+    }
+
+    #[test]
+    fn weapon_only_the_log_knows() {
+        // Course dataset 2026-11-19: Nunchasa isn't in the export, and the wiki gives it no
+        // family, so its riven weapon was unknown. The log's path is enough at disposition 1.2.
+        let d = rivens::bundled_flat();
+        let c = card("Nunchasa Critacan / +237.4% Critical Chance / +122.9% Multishot / +55.9% Weapon Recoil / MR 9");
+        let bow = Some("/Lotus/Weapons/Tenno/Bows/DuelistBow/DuelistBow");
+        assert!(!d.weapons.contains_key(bow.unwrap()), "bundled data learned it: pick a newer weapon");
+        let r = rebuild(&d, &GradeSheet::default(), "LotusRifleRandomModRare", &c, bow, None).unwrap();
+        assert_eq!((r.view.weapon.as_str(), r.view.stats.len()), ("Nunchasa", 3));
+        // Without the log, still unknown.
+        assert!(rebuild(&d, &GradeSheet::default(), "LotusRifleRandomModRare", &c, None, None).is_err());
+    }
+
+    #[test]
+    fn nothing_continues_a_closed_bracket() {
+        // Course dataset 2026-11-19 (Okina Crita-loctinent): "+1.8" lost behind its icon.
+        let c = card("Okina Crita-loctinent / +167.2% Critical Chance / (x2 for Heavy Attacks) / Range / +100.2% Critical Chance / for Slide Attack / MR 15");
+        assert_eq!(c.stats.len(), 3);
+        assert_eq!(c.stats[0].label, "criticalchancexforheavyattacks");
+        assert!(c.stats[1].value.is_nan());
+        assert_eq!((c.stats[1].label.as_str(), c.lost_numbers), ("range", 1));
+        // An open bracket still wraps.
+        let c = card("Ax-52 Crita-vexidra / +43.1% Fire Rate (x2 for / Bows) / -35.6% Zoom / MR 12");
+        assert_eq!(c.stats.len(), 2);
     }
 
     #[test]
