@@ -7,6 +7,13 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.0.3",
+    fixes: [
+      "Chat: item suggestions no longer list blueprints; the item or part itself is suggested (Saryn Prime Chassis, not Saryn Prime Chassis Blueprint).",
+      "Chat: glyphs, sigils, Honoria and skins are no longer suggested, except ones sold on warframe.market.",
+    ],
+  },
+  {
     version: "1.0.2",
     fixes: [
       "Chat: typing \"[\" now suggests every item in the game, not only ones sold on warframe.market.",

@@ -5,6 +5,14 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-11-24
+
+### Fixed
+- Chat: "[" no longer suggests blueprints, which have no link in the game; the item or part
+  itself is suggested ("Saryn Prime Chassis", not "Saryn Prime Chassis Blueprint").
+- Chat: "[" no longer suggests glyphs, sigils, Honoria or skins (with helmets, syandanas, armor
+  and ephemeras), except ones sold on warframe.market.
+
 ## [1.0.2] — 2026-11-23
 
 ### Fixed
@@ -370,7 +378,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.13...v1.0.0
