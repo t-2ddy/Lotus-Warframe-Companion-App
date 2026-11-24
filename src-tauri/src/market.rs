@@ -389,11 +389,22 @@ pub fn request_prices(
     market.request(&shared, keys)
 }
 
-/// Tradable item names for the Chat page's "[" suggestions, from the cached item list (empty
-/// until it has been downloaded once).
+/// Item names for the Chat page's "[" suggestions: every WFCD item (tradable or not) plus the
+/// cached warframe.market list, which adds sets ("Saryn Prime Set"). Market spellings win when
+/// both have a name.
 #[tauri::command]
-pub fn item_names(market: State<'_, Arc<Market>>) -> Vec<String> {
-    std::fs::read(market.dir.join("items.json")).ok().and_then(|b| parse_names(&b).ok()).unwrap_or_default()
+pub fn item_names(shared: State<'_, Arc<Shared>>, market: State<'_, Arc<Market>>) -> Vec<String> {
+    let market_names = std::fs::read(market.dir.join("items.json")).ok().and_then(|b| parse_names(&b).ok()).unwrap_or_default();
+    let index = shared.items.read().map(|i| Arc::clone(&i)).unwrap_or_default();
+    merge_names(market_names, index.link_names())
+}
+
+/// Both name lists in one, sorted, each name once (any case); the first list's spelling wins.
+fn merge_names(first: Vec<String>, second: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut names: Vec<String> = first.into_iter().chain(second).filter(|n| seen.insert(n.to_lowercase())).collect();
+    names.sort_unstable_by_key(|n| n.to_lowercase());
+    names
 }
 
 #[cfg(test)]
@@ -408,6 +419,13 @@ mod tests {
         let slugs = parse_items(json).unwrap();
         assert_eq!(slugs.len(), 1);
         assert_eq!(slugs["/Lotus/Upgrades/Mods/Rifle/WeaponDamageAmountMod"], "serration");
+    }
+
+    #[test]
+    fn merged_names_keep_the_first_spelling_once() {
+        let market = vec!["Saryn Prime Set".to_string(), "Orokin Cell".to_string()];
+        let wfcd = vec!["orokin cell".to_string(), "Excalibur Umbra".to_string()];
+        assert_eq!(merge_names(market, wfcd), ["Excalibur Umbra", "Orokin Cell", "Saryn Prime Set"]);
     }
 
     #[test]

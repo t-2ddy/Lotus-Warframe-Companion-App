@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import Copy from "@lucide/svelte/icons/copy";
   import Check from "@lucide/svelte/icons/check";
   import Plus from "@lucide/svelte/icons/plus";
@@ -128,17 +129,21 @@
   }
 
   // Item links: the game turns "[Saryn Prime Set]" into a link, so typing "[" suggests item
-  // names (warframe.market's list) and the user's own rivens ("[Torid Crita-acriata]") to spell
-  // it right.
+  // names (every item WFCD lists, tradable or not, plus warframe.market's sets) and the user's
+  // own rivens ("[Torid Crita-acriata]") to spell it right.
   const MAX_SUGGESTIONS = 8;
   type Item = { name: string; lower: string; riven: boolean };
-  let marketItems: Item[] = [];
+  let gameItems: Item[] = [];
   let rivenItems: Item[] = [];
   const toItem = (name: string, riven: boolean): Item => ({ name, lower: name.toLowerCase(), riven });
   onMount(() => {
-    invoke<string[]>("item_names")
-      .then((names) => (marketItems = names.map((n) => toItem(n, false))))
-      .catch(() => {});
+    // Again when the item data finishes loading (it can arrive after the page opens).
+    const loadNames = () =>
+      invoke<string[]>("item_names")
+        .then((names) => (gameItems = names.map((n) => toItem(n, false))))
+        .catch(() => {});
+    loadNames();
+    const off = listen("inventory-updated", loadNames);
     invoke<{ rivens: { weapon: string; name: string }[] }>("get_rivens")
       .then((page) => {
         const names = new Set(page.rivens.filter((r) => r.name).map((r) => `${r.weapon} ${r.name}`));
@@ -151,6 +156,9 @@
         rivensLoaded = true;
       })
       .catch(() => {});
+    return () => {
+      off.then((f) => f());
+    };
   });
 
   // A linked riven the user no longer has (sold, traded, or rerolled into a new name) is marked
@@ -209,7 +217,7 @@
     if (!q) return [];
     const words = q.split(/\s+/);
     const rank = (lower: string) => (lower.startsWith(q) ? 0 : lower.includes(` ${words[0]}`) ? 1 : 2);
-    return [...rivenItems, ...marketItems]
+    return [...rivenItems, ...gameItems]
       .filter((n) => words.every((w) => n.lower.includes(w)))
       .map((n) => ({ item: n, rank: rank(n.lower) }))
       .sort(
@@ -267,13 +275,14 @@
     return set ? `[${set[1]}] set` : `[${name}]`;
   }
 
-  /** Replaces "[typed" with the item's link and puts the cursor after it. */
+  /** Replaces "[typed" with the item's link and puts the cursor after it. Inside an existing
+   *  link ("[Ash|Saryn Prime] set"), the whole old link goes: the rest of its name, its "]" and
+   *  a " set" after it, so only the new link is left, with one bracket at each end. */
   async function pickItem(line: Line, item: Item) {
     if (!suggest) return;
     const input = document.getElementById(`line-${line.id}`) as HTMLTextAreaElement | null;
     const caret = input?.selectionStart ?? line.text.length;
-    // A "]" already right after the cursor is reused, not doubled.
-    const after = line.text.slice(caret).replace(/^\]/, "");
+    const after = restAfterLink(line.text.slice(caret));
     const link = chatLink(item);
     line.text = line.text.slice(0, suggest.start) + link + after;
     suggest = null;
@@ -283,6 +292,33 @@
     const at = line.text.length - after.length;
     input?.focus();
     input?.setSelectionRange(at, at);
+    justLinked = { lineId: line.id, at };
+  }
+
+  /** Where a picked link just ended, so a "]" typed out of habit right after it is dropped
+   *  instead of doubling the bracket ("[Saryn Prime]]"). Any other key forgets it. */
+  let justLinked: { lineId: number; at: number } | null = null;
+
+  /** True if the key was a "]" right after a picked link, and was skipped. */
+  function skipBracket(e: KeyboardEvent, line: Line): boolean {
+    // Shift/AltGr alone (pressed on the way to "]" on some layouts) don't count as a key.
+    if (["Shift", "Alt", "AltGraph", "Control"].includes(e.key)) return false;
+    const last = justLinked;
+    justLinked = null;
+    if (e.key !== "]" || last?.lineId !== line.id) return false;
+    const input = e.currentTarget as HTMLTextAreaElement;
+    if (input.selectionStart !== last.at || input.selectionEnd !== last.at) return false;
+    e.preventDefault();
+    return true;
+  }
+
+  /** The text after the cursor once the rest of the link being typed over is gone: up to and
+   *  including its "]" (if one closes it on this line before another "["; a doubled "]]" goes
+   *  too) and the " set" following that bracket. Text with no closing "]" is kept as it is. */
+  function restAfterLink(rest: string): string {
+    const close = rest.match(/^[^[\]\n]*\]+/);
+    if (!close) return rest;
+    return rest.slice(close[0].length).replace(/^ set\b/i, "");
   }
 
   /** Keys for an open suggestion list; true if the key was used. */
@@ -304,7 +340,7 @@
   }
 
   function onKey(e: KeyboardEvent, line: Line) {
-    if (suggestKey(e, line)) return;
+    if (skipBracket(e, line) || suggestKey(e, line)) return;
     if (e.key === "Enter") {
       // Copies; a chat line never gets a line break.
       e.preventDefault();
@@ -420,7 +456,7 @@
         saveNotes();
         updateSuggest(notes, e.currentTarget);
       }}
-      onkeydown={(e) => suggestKey(e, notes)}
+      onkeydown={(e) => skipBracket(e, notes) || suggestKey(e, notes)}
       onclick={(e) => updateSuggest(notes, e.currentTarget)}
       onscroll={() => (suggest = null)}
       onblur={() => (suggest = null)}

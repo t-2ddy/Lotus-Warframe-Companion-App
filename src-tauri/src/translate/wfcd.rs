@@ -783,6 +783,29 @@ impl ItemIndex {
         self.by_name.get(&name.to_lowercase()).map(String::as_str)
     }
 
+    /// Every item's name as chat links it, for the Chat page's "[" suggestions: tradable or not.
+    /// Relics are named once, as the game links them ("Lith S8 Relic", not each refinement);
+    /// one-word part names with no item in front ("Barrel") aren't linkable, so they're left out.
+    pub fn link_names(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut names = Vec::new();
+        for info in self.items.values() {
+            let name = if info.file == "Relics" {
+                let base = split_relic_name(&info.name).0;
+                if base.ends_with(" Relic") { base.to_string() } else { format!("{base} Relic") }
+            } else if info.file == "Components" && !info.name.contains(' ') {
+                continue;
+            } else {
+                info.name.clone()
+            };
+            if !name.is_empty() && seen.insert(name.to_lowercase()) {
+                names.push(name);
+            }
+        }
+        names.sort_unstable_by_key(|n| n.to_lowercase());
+        names
+    }
+
     /// Every item that gives mastery, in WFCD file order.
     pub fn masterables(&self) -> &[Masterable] {
         &self.masterables
@@ -1370,5 +1393,18 @@ mod tests {
         f.push(("Mods".into(), b"not json".to_vec()));
         // Braton Prime, its Barrel and Blueprint, Orokin Cell, the relic.
         assert_eq!(ItemIndex::build(&f).len(), 5);
+    }
+
+    #[test]
+    fn link_names_cover_untradable_items_and_relics_once() {
+        let files = vec![
+            ("Warframes".into(), br#"[{"uniqueName":"/W/Saryn","name":"Saryn","components":[{"uniqueName":"/Lotus/Types/Recipes/SarynHelmet","name":"Neuroptics"}]}]"#.to_vec()),
+            ("Resources".into(), br#"[{"uniqueName":"/R/Cell","name":"Orokin Cell"}]"#.to_vec()),
+            ("Relics".into(), br#"[{"uniqueName":"/Rel/A1","name":"Axi A1 Intact"},{"uniqueName":"/Rel/A1R","name":"Axi A1 Radiant"},
+                {"uniqueName":"/Rel/Q","name":"Requiem I Intact"},{"uniqueName":"/Rel/E","name":"Requiem Eterna Relic"}]"#.to_vec()),
+            ("Components".into(), br#"[{"uniqueName":"/Lotus/Types/Recipes/SarynHelmet","name":"Neuroptics"},{"uniqueName":"/C/Barrel","name":"Barrel"}]"#.to_vec()),
+        ];
+        let names = ItemIndex::build(&files).link_names();
+        assert_eq!(names, ["Axi A1 Relic", "Orokin Cell", "Requiem Eterna Relic", "Requiem I Relic", "Saryn", "Saryn Neuroptics"]);
     }
 }
