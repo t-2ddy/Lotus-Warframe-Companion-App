@@ -7,6 +7,14 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.0.2",
+    fixes: [
+      "Chat: typing \"[\" now suggests every item in the game, not only ones sold on warframe.market.",
+      "Chat: picking a suggestion no longer leaves a doubled \"]]\" at the end of the link.",
+      "Chat: picking a suggestion inside an existing link replaces that whole link instead of leaving the old name behind.",
+    ],
+  },
+  {
     version: "1.0.1",
     fixes: [
       "Closing Lotus now quits it instead of leaving it running in the background.",

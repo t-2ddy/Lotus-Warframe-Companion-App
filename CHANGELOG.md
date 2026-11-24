@@ -5,6 +5,20 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-11-23
+
+### Fixed
+- Chat: typing "[" now suggests every item in the game, not only ones sold on warframe.market.
+  Untradable items (Excalibur Umbra, resources, Gear, cosmetics, quest items, non-Prime
+  frames and weapons…) come from WFCD's item data; relics are suggested once each as
+  "Axi A1 Relic". The list also refreshes when the item data finishes loading after the page
+  is already open.
+- Chat: a "]" typed right after picking an item suggestion is skipped, so the link doesn't end
+  in two brackets ("[Saryn Prime]]").
+- Chat: picking a suggestion while the cursor is inside an existing link replaces that whole
+  link. The old name's leftover text, its "]" (or "]]") and a " set" after it are cleared, so
+  "[Ash|Saryn Prime] set" becomes "[Ash Prime] set", not "[Ash Prime] setSaryn Prime] set".
+
 ## [1.0.1] — 2026-11-21
 
 ### Fixed
@@ -356,7 +370,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.13...v1.0.0
 [0.1.13]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v0.1.12...v0.1.13
