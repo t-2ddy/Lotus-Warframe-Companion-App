@@ -391,7 +391,7 @@ pub fn request_prices(
 
 /// Item names for the Chat page's "[" suggestions: every WFCD item (tradable or not) plus the
 /// cached warframe.market list, which adds sets ("Saryn Prime Set"). Market spellings win when
-/// both have a name.
+/// both have a name. No blueprints: the game links the item or part itself.
 #[tauri::command]
 pub fn item_names(shared: State<'_, Arc<Shared>>, market: State<'_, Arc<Market>>) -> Vec<String> {
     let market_names = std::fs::read(market.dir.join("items.json")).ok().and_then(|b| parse_names(&b).ok()).unwrap_or_default();
@@ -400,9 +400,17 @@ pub fn item_names(shared: State<'_, Arc<Shared>>, market: State<'_, Arc<Market>>
 }
 
 /// Both name lists in one, sorted, each name once (any case); the first list's spelling wins.
+/// Blueprints become what they build ("Saryn Prime Chassis Blueprint" → "Saryn Prime Chassis").
 fn merge_names(first: Vec<String>, second: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
-    let mut names: Vec<String> = first.into_iter().chain(second).filter(|n| seen.insert(n.to_lowercase())).collect();
+    let mut names: Vec<String> = first
+        .into_iter()
+        .chain(second)
+        .map(|n| n.strip_suffix(" Blueprint").map(str::to_string).unwrap_or(n))
+        // Names made from game file paths ("Orokincatalystblueprint").
+        .filter(|n| !n.to_lowercase().ends_with("blueprint"))
+        .filter(|n| seen.insert(n.to_lowercase()))
+        .collect();
     names.sort_unstable_by_key(|n| n.to_lowercase());
     names
 }
@@ -426,6 +434,13 @@ mod tests {
         let market = vec!["Saryn Prime Set".to_string(), "Orokin Cell".to_string()];
         let wfcd = vec!["orokin cell".to_string(), "Excalibur Umbra".to_string()];
         assert_eq!(merge_names(market, wfcd), ["Excalibur Umbra", "Orokin Cell", "Saryn Prime Set"]);
+    }
+
+    #[test]
+    fn merged_names_have_no_blueprints() {
+        let market = ["Saryn Prime Blueprint", "Saryn Prime Chassis Blueprint", "Cinta Grip Blueprint", "Orokinreactorblueprint"].map(String::from).to_vec();
+        let wfcd = ["Saryn Prime", "Saryn Prime Chassis"].map(String::from).to_vec();
+        assert_eq!(merge_names(market, wfcd), ["Cinta Grip", "Saryn Prime", "Saryn Prime Chassis"]);
     }
 
     #[test]

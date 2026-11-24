@@ -407,6 +407,15 @@ fn parent_priority(file: &str) -> u8 {
 /// Relic refinements, in order of how refined they are.
 pub const REFINEMENTS: [&str; 4] = ["Intact", "Exceptional", "Flawless", "Radiant"];
 
+/// Cosmetics the game has no chat link for: glyphs, sigils, Honoria, and skins (WFCD's "Skin" type
+/// includes helmets, syandanas, armor and ephemeras).
+fn no_chat_link(info: &ItemInfo) -> bool {
+    matches!(info.file.as_str(), "Glyphs" | "Sigils" | "Honoria")
+        || matches!(info.kind.as_deref(), Some("Glyph" | "Skin" | "Skins" | "Syandana"))
+        // A few skins are filed under other types; mods like "Stone Skin" are real items.
+        || (info.name.ends_with(" Skin") && info.file != "Mods")
+}
+
 /// Splits "Lith S8 Radiant" into ("Lith S8", "Radiant"). Names without a known refinement
 /// (a few special relics) count as Intact.
 pub fn split_relic_name(name: &str) -> (&str, &str) {
@@ -784,12 +793,18 @@ impl ItemIndex {
     }
 
     /// Every item's name as chat links it, for the Chat page's "[" suggestions: tradable or not.
+    /// Cosmetics without a chat link are left out (see `no_chat_link`).
     /// Relics are named once, as the game links them ("Lith S8 Relic", not each refinement);
     /// one-word part names with no item in front ("Barrel") aren't linkable, so they're left out.
     pub fn link_names(&self) -> Vec<String> {
         let mut seen = HashSet::new();
         let mut names = Vec::new();
         for info in self.items.values() {
+            // A blueprint is suggested as what it builds, so it's hidden along with that.
+            let built = info.name.strip_suffix(" Blueprint").and_then(|base| self.get(self.path_by_name(base)?));
+            if no_chat_link(info) || built.is_some_and(no_chat_link) {
+                continue;
+            }
             let name = if info.file == "Relics" {
                 let base = split_relic_name(&info.name).0;
                 if base.ends_with(" Relic") { base.to_string() } else { format!("{base} Relic") }
@@ -1400,11 +1415,19 @@ mod tests {
         let files = vec![
             ("Warframes".into(), br#"[{"uniqueName":"/W/Saryn","name":"Saryn","components":[{"uniqueName":"/Lotus/Types/Recipes/SarynHelmet","name":"Neuroptics"}]}]"#.to_vec()),
             ("Resources".into(), br#"[{"uniqueName":"/R/Cell","name":"Orokin Cell"}]"#.to_vec()),
+            ("Glyphs".into(), br#"[{"uniqueName":"/G/S","name":"Saryn Prime Glyph - Dark","type":"Glyph"}]"#.to_vec()),
+            ("Skins".into(), br#"[{"uniqueName":"/K/S","name":"Saryn Prime Skin","type":"Skin"},
+                {"uniqueName":"/K/E","name":"Eros Arrow Skin","type":"Misc"},
+                {"uniqueName":"/K/O","name":"Asa Syandana","type":"Skin"}]"#.to_vec()),
+            ("Sigils".into(), br#"[{"uniqueName":"/S/C","name":"Choice Sigil"}]"#.to_vec()),
+            ("Honoria".into(), br#"[{"uniqueName":"/H/D","name":"Doctor Honoria"}]"#.to_vec()),
             ("Relics".into(), br#"[{"uniqueName":"/Rel/A1","name":"Axi A1 Intact"},{"uniqueName":"/Rel/A1R","name":"Axi A1 Radiant"},
                 {"uniqueName":"/Rel/Q","name":"Requiem I Intact"},{"uniqueName":"/Rel/E","name":"Requiem Eterna Relic"}]"#.to_vec()),
-            ("Components".into(), br#"[{"uniqueName":"/Lotus/Types/Recipes/SarynHelmet","name":"Neuroptics"},{"uniqueName":"/C/Barrel","name":"Barrel"}]"#.to_vec()),
+            ("Components".into(), br#"[{"uniqueName":"/Lotus/Types/Recipes/SarynHelmet","name":"Neuroptics"},{"uniqueName":"/C/Barrel","name":"Barrel"},
+                {"uniqueName":"/C/Asa","name":"Asa Syandana Blueprint"}]"#.to_vec()),
         ];
-        let names = ItemIndex::build(&files).link_names();
+        let index = ItemIndex::build(&files);
+        let names = index.link_names();
         assert_eq!(names, ["Axi A1 Relic", "Orokin Cell", "Requiem Eterna Relic", "Requiem I Relic", "Saryn", "Saryn Neuroptics"]);
     }
 }
