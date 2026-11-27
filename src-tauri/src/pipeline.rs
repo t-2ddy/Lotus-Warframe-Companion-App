@@ -121,11 +121,13 @@ pub fn start(app: AppHandle) {
         });
 
         // Wiki part recipes, labs and vendors (the Foundry's item popup): cached, refreshed every 2 weeks.
-        let (shared6, wiki_dir) = (shared.clone(), dir.join("wiki"));
+        // The Mastery Helper's Market and Dojo tabs come from it too, so pages reload once it's in.
+        let (app6, shared6, wiki_dir) = (app.clone(), shared.clone(), dir.join("wiki"));
         std::thread::spawn(move || {
             let data = acquisition::load_or_refresh(&wiki_dir);
             eprintln!("[wiki] recipes, labs and vendors loaded: {}", if data.is_empty() { "none" } else { "ok" });
             *shared6.wiki.write().unwrap() = Arc::new(data);
+            let _ = app6.emit("inventory-updated", ());
         });
 
         // Node data: the bundled snapshot now, the wiki's current data once it's loaded.

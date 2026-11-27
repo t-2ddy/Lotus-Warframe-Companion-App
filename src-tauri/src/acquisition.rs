@@ -93,6 +93,17 @@ impl WikiData {
         self.blueprints.is_empty() && self.research.is_empty() && self.offers.is_empty()
     }
 
+    /// The Clan Dojo lab that researches `name` ("Banshee" → "Tenno Lab").
+    pub fn research_lab(&self, name: &str) -> Option<&str> {
+        self.research.get(name).map(String::as_str)
+    }
+
+    /// What the Market charges for `name`'s blueprint, in credits: the entry's own `BPCost`
+    /// (a part's `BPCost` inside an entry isn't a Market sale).
+    pub fn market_blueprint_cost(&self, name: &str) -> Option<i64> {
+        self.blueprints.get(name)?.n("BPCost").filter(|c| *c > 0)
+    }
+
     /// Reads the three modules' text (any may be missing).
     pub fn parse(blueprints: Option<&str>, research: Option<&str>, vendors: Option<&str>) -> Self {
         let mut data = WikiData::default();
@@ -110,6 +121,10 @@ impl WikiData {
                 let Some(lab) = entry.s("Lab") else { continue };
                 let lab_name = labs.and_then(|l| l.get(lab)).and_then(|l| l.s("Name")).unwrap_or(lab);
                 data.research.insert(name.clone(), lab_name.to_string());
+                // "Dark Split-Sword (Dual Swords)" is WFCD's "Dark Split-Sword".
+                if let Some((short, _)) = name.split_once(" (").filter(|_| name.ends_with(')')) {
+                    data.research.entry(short.to_string()).or_insert_with(|| lab_name.to_string());
+                }
             }
         }
         if let Some(root) = vendors.and_then(parse_module) {

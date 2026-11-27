@@ -35,6 +35,11 @@
     stage: "owned" | "building" | "ready" | "set" | "";
     /** MOAs, Hounds, Predasites, Vulpaphylas: times still to reach max rank (gilding in between); 0 = no note. */
     maxesLeft: number;
+    /** Dojo: the Clan Dojo lab that researches it. */
+    lab: string | null;
+    /** Market: its credit price, and whether that buys it built (Mk1 weapons) or its blueprint. */
+    marketCredits: number | null;
+    marketBuilt: boolean;
   };
   type RelicNeed = {
     path: string;
@@ -59,6 +64,8 @@
     relics: Suggestion[];
     platinum: Suggestion[];
     crafted: Suggestion[];
+    market: Suggestion[];
+    dojo: Suggestion[];
     trees: CraftWeb;
   };
   type PriceView = {
@@ -69,17 +76,21 @@
     status: "fresh" | "stale" | "loading" | "untradable";
   };
 
-  type Mode = "easy" | "relics" | "platinum" | "trees";
+  type Mode = "easy" | "relics" | "platinum" | "market" | "dojo" | "trees";
   const MODES: { id: Mode; label: string }[] = [
     { id: "easy", label: "Easy" },
     { id: "relics", label: "From relics" },
     { id: "platinum", label: "With platinum" },
+    { id: "market", label: "Market" },
+    { id: "dojo", label: "Dojo" },
     { id: "trees", label: "Crafting trees" },
   ];
+  /** Tabs with the Favorites / Hide mastered filters; their cards open the item popup or a tree. */
+  const FILTERED: Mode[] = ["market", "dojo", "trees"];
   /** Crafting trees: the card whose tree is open, and the weapon whose recipe popup is open over it. */
   let treeFocus = $state<Suggestion | null>(null);
 
-  /** Crafting trees filters, remembered between visits. */
+  /** Crafting trees, Market and Dojo filters (shared), remembered between visits. */
   const TREE_FILTERS_KEY = "mastery.treeFilters";
   function loadTreeFilters(): { favorites: boolean; hideMastered: boolean } {
     try {
@@ -232,21 +243,95 @@
   const partCount = $derived(new Set((data?.platinum ?? []).flatMap((s) => s.buy.map((b) => b.path))).size);
   const platinumTotal = $derived(priced.reduce((a, x) => a + (x.cost ?? 0), 0));
 
-  const craftedShown = $derived(
-    (data?.crafted ?? []).filter(
-      (s) => (!treeFilters.favorites || s.favorite) && (!treeFilters.hideMastered || s.xpGain > 0),
-    ),
+  /** The full list behind a filtered tab, before the filters. */
+  const unfiltered = $derived(
+    mode === "market" ? (data?.market ?? []) : mode === "dojo" ? (data?.dojo ?? []) : (data?.crafted ?? []),
   );
+  /** After Favorites / Hide mastered, before the category. */
+  const passing = $derived(
+    unfiltered.filter((s) => (!treeFilters.favorites || s.favorite) && (!treeFilters.hideMastered || s.xpGain > 0)),
+  );
+
+  /** Market and Dojo: one category at a time (Foundry tab names), remembered between visits. */
+  const CATEGORIES = [
+    { id: "all", label: "All" },
+    { id: "warframe", label: "Warframes" },
+    { id: "primary", label: "Primary" },
+    { id: "secondary", label: "Secondary" },
+    { id: "melee", label: "Melee" },
+    { id: "arch", label: "Archwing" },
+    { id: "companion", label: "Companions" },
+  ] as const;
+  type Category = (typeof CATEGORIES)[number]["id"];
+  const CATEGORY_KEY = "mastery.buyCategory";
+  function loadCategory(): Category {
+    try {
+      const saved = localStorage.getItem(CATEGORY_KEY);
+      return CATEGORIES.some((c) => c.id === saved) ? (saved as Category) : "all";
+    } catch {
+      return "all";
+    }
+  }
+  let category = $state<Category>(loadCategory());
+  function pickCategory(c: Category) {
+    category = c;
+    try {
+      localStorage.setItem(CATEGORY_KEY, c);
+    } catch {}
+  }
+  const byCategory = $derived(mode === "market" || mode === "dojo");
+  const categoryCounts = $derived.by(() => {
+    const counts: Record<string, number> = { all: passing.length };
+    for (const s of passing) counts[s.tab] = (counts[s.tab] ?? 0) + 1;
+    return counts;
+  });
+  const inCategory = $derived(byCategory && category !== "all" ? passing.filter((s) => s.tab === category) : passing);
+
+  /** Dojo: one lab at a time, or every lab (null, the "All" chip); remembered between visits. */
+  const LAB_KEY = "mastery.dojoLab";
+  function loadLab(): string | null {
+    try {
+      return localStorage.getItem(LAB_KEY);
+    } catch {
+      return null;
+    }
+  }
+  let lab = $state<string | null>(loadLab());
+  function pickLab(l: string | null) {
+    lab = l;
+    try {
+      if (lab) localStorage.setItem(LAB_KEY, lab);
+      else localStorage.removeItem(LAB_KEY);
+    } catch {}
+  }
+  /** Every lab in the Dojo list, most items first; counts follow the other filters. */
+  const labs = $derived.by(() => {
+    const all = [...new Set((data?.dojo ?? []).map((s) => s.lab).filter((l): l is string => !!l))];
+    const counts: Record<string, number> = {};
+    for (const s of inCategory) if (s.lab) counts[s.lab] = (counts[s.lab] ?? 0) + 1;
+    const total = (l: string) => (data?.dojo ?? []).filter((s) => s.lab === l).length;
+    return all.sort((a, b) => total(b) - total(a) || a.localeCompare(b)).map((name) => ({ name, count: counts[name] ?? 0 }));
+  });
+  /** A saved lab the data no longer has counts as no pick. */
+  const activeLab = $derived(mode === "dojo" && lab && labs.some((l) => l.name === lab) ? lab : null);
+  const filteredShown = $derived(activeLab ? inCategory.filter((s) => s.lab === activeLab) : inCategory);
 
   const list = $derived(
     mode === "easy"
       ? (data?.easy ?? [])
       : mode === "relics"
         ? (data?.relics ?? [])
-        : mode === "trees"
-          ? craftedShown
+        : FILTERED.includes(mode)
+          ? filteredShown
           : priced.map((x) => x.s),
   );
+
+  /** Opens a card: its crafting tree, the item popup (Market, Dojo) or the set popup. */
+  function openCard(s: Suggestion) {
+    if (mode === "trees") treeFocus = s;
+    else if (mode === "market" || mode === "dojo") treeItem = s.path;
+    else openDetail(s);
+  }
 
   /** The "From relics" or "With platinum" card whose popup is open, and which tab opened it. */
   let detail = $state<Suggestion | null>(null);
@@ -270,8 +355,7 @@
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      if (mode === "trees") treeFocus = s;
-      else openDetail(s);
+      openCard(s);
     }
   }
 
@@ -440,10 +524,16 @@
       <p class="muted note">
         Prime sets closest to being built, where every missing part drops from a relic you own. Fewest missing parts first.
       </p>
-    {:else if mode === "trees"}
+    {:else if FILTERED.includes(mode)}
       <div class="tree-bar">
         <p class="muted note">
-          Items built from other weapons. Click one for its crafting tree. Building uses those weapons up, so master them first.
+          {#if mode === "market"}
+            Items whose blueprint the Market sells for credits (Mk1 weapons come built). Click one for its recipe.
+          {:else if mode === "dojo"}
+            Items researched in a Clan Dojo lab. Click one for its recipe; the lab has to finish the research first.
+          {:else}
+            Items built from other weapons. Click one for its crafting tree. Building uses those weapons up, so master them first.
+          {/if}
         </p>
         <div class="toggles" role="group" aria-label="Filters">
           {#each [["favorites", "Favorites"], ["hideMastered", "Hide mastered"]] as const as [key, label]}
@@ -452,9 +542,32 @@
               {label}
             </button>
           {/each}
-          <span class="muted shown">{craftedShown.length} of {data.crafted.length}</span>
+          <span class="muted shown">{filteredShown.length} of {unfiltered.length}</span>
         </div>
       </div>
+      {#if byCategory}
+        <div class="filter-row">
+          <div class="categories" role="group" aria-label="Category">
+            {#each CATEGORIES as c}
+              <button class="category" class:on={category === c.id} aria-pressed={category === c.id} onclick={() => pickCategory(c.id)}>
+                {c.label}<span class="count">{categoryCounts[c.id] ?? 0}</span>
+              </button>
+            {/each}
+          </div>
+          {#if mode === "dojo" && labs.length}
+            <div class="categories" role="group" aria-label="Research lab">
+              <button class="category" class:on={!activeLab} aria-pressed={!activeLab} onclick={() => pickLab(null)}>
+                All<span class="count">{inCategory.length}</span>
+              </button>
+              {#each labs as l (l.name)}
+                <button class="category" class:on={activeLab === l.name} aria-pressed={activeLab === l.name} onclick={() => pickLab(l.name)}>
+                  {l.name}<span class="count">{l.count}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
     {:else}
       <p class="muted note">
         Items that aren't mastered yet: ones you own or are building, then sets ready to build, then full sets where you
@@ -476,10 +589,12 @@
             ? `${s.name}: relics and prices for the missing parts`
             : mode === "trees"
               ? `${s.name}: crafting tree`
-              : opens
+              : mode === "market" || mode === "dojo"
+                ? `${s.name}: recipe and where to get it`
+                : opens
                 ? `${s.name}: set and part prices`
                 : undefined}
-          onclick={opens ? () => (mode === "trees" ? (treeFocus = s) : openDetail(s)) : undefined}
+          onclick={opens ? () => openCard(s) : undefined}
           onkeydown={opens ? (e) => onCardKey(e, s) : undefined}
           onpointerenter={() => (hovered = s)}
           onpointerleave={() => hovered === s && (hovered = null)}
@@ -551,6 +666,19 @@
               <div class="sources" title="Weapons mastered in its crafting tree: itself, what goes into it and what it goes into">
                 {t.done}/{t.total} mastered in its tree
               </div>
+            {:else if mode === "market" || mode === "dojo"}
+              <div class="detail">
+                <span>Level <b>{s.rank}</b>/{s.maxRank}</span>
+                {#if s.xpGain === 0}<span class="chip owned">Mastered</span>{:else if s.owned}<span class="chip owned">Inventory</span>{/if}
+              </div>
+              {#if mode === "market" && s.marketCredits !== null}
+                <div class="sources credits">
+                  {s.marketBuilt ? "Built" : "Blueprint"} · {s.marketCredits.toLocaleString()}
+                  <img class="credit-icon" src="/icons/credits.png" alt="credits" />
+                </div>
+              {:else if s.lab}
+                <div class="sources" title="Researched in the Clan Dojo's {s.lab}">{s.lab}</div>
+              {/if}
             {:else}
               <div class="detail">
                 <span class="price">
@@ -1131,6 +1259,60 @@
     color: var(--text);
   }
 
+  /* Categories, then the Dojo labs on a row of their own. */
+  .filter-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: -4px 0 14px;
+  }
+
+  .categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .category {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+
+  .category:hover {
+    border-color: var(--line-strong);
+    color: var(--text);
+  }
+
+  .category.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .category .count {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+  }
+
+
+
+
+
+
   .tick {
     display: inline-grid;
     place-items: center;
@@ -1572,6 +1754,18 @@
     gap: 4px;
     white-space: nowrap;
     font-size: 14px;
+  }
+
+  .sources.credits {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .credit-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
   }
 
   .sources {

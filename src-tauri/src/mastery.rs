@@ -1,5 +1,6 @@
 //! The Mastery Helper page: total mastery XP, rank progress, summary boxes, and the
-//! "best ways to level up mastery" lists (Easy, From relics, With platinum).
+//! "best ways to level up mastery" lists (Easy, From relics, With platinum, Market, Dojo,
+//! Crafting trees).
 //!
 //! Mastery sources (Warframe wiki, Mastery Rank):
 //! - items: 200 per rank for Warframe-like items, 100 per rank for weapons (up to the item's max rank)
@@ -15,6 +16,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::State;
 
+use crate::acquisition::WikiData;
 use crate::foundry::{self, FoundryItem, PartView};
 use crate::pipeline::Shared;
 use crate::translate::nodes::NodeData;
@@ -28,6 +30,23 @@ pub const INTRINSIC_XP: i64 = 1500;
 const MAX_INTRINSIC_RANK: i64 = 10;
 const RAILJACK_SKILLS: [&str; 5] = ["LPS_TACTICAL", "LPS_PILOTING", "LPS_GUNNERY", "LPS_ENGINEERING", "LPS_COMMAND"];
 const DRIFTER_SKILLS: [&str; 4] = ["LPS_DRIFT_RIDING", "LPS_DRIFT_COMBAT", "LPS_DRIFT_OPPORTUNITY", "LPS_DRIFT_ENDURANCE"];
+/// Sold in the Market for credits but in neither WFCD's nor the wiki's blueprint data (wiki pages
+/// Mk1 and Sentinel): (name, credits, sold built rather than as a blueprint).
+const MARKET_EXTRA: [(&str, i64, bool); 13] = [
+    ("Mk1-Braton", 15_000, true),
+    ("Mk1-Paris", 15_000, true),
+    ("Mk1-Kunai", 15_000, true),
+    ("Mk1-Furax", 15_000, true),
+    ("Mk1-Furis", 15_000, true),
+    ("Mk1-Strun", 15_000, true),
+    ("Mk1-Bo", 15_000, true),
+    ("Taxon", 5_000, false),
+    ("Carrier", 100_000, false),
+    ("Dethcube", 100_000, false),
+    ("Diriga", 100_000, false),
+    ("Shade", 100_000, false),
+    ("Wyrm", 100_000, false),
+];
 /// Every planet junction; used if the node data doesn't list them.
 const DEFAULT_JUNCTIONS: i64 = 13;
 
@@ -103,6 +122,12 @@ pub struct Suggestion {
     /// times it must reach max rank (2, or 1 when a copy is already maxed and waits to be gilded).
     /// 0 for every other item, and once a copy is gilded (then it levels like anything else).
     pub maxes_left: u32,
+    /// Dojo: the Clan Dojo lab that researches it ("Tenno Lab").
+    pub lab: Option<String>,
+    /// Market: what it costs in credits, and whether that buys it built (Mk1 weapons) rather
+    /// than its blueprint.
+    pub market_credits: Option<i64>,
+    pub market_built: bool,
 }
 
 /// A set part still missing, and where to get it: the owned relics that drop it, or buying it.
@@ -158,6 +183,10 @@ pub struct MasteryData {
     /// Crafting trees: one card per item built from other masterable items, the ones still to
     /// master first (most XP first), then the mastered ones.
     pub crafted: Vec<Suggestion>,
+    /// Market: items whose blueprint (or the item, for Mk1 weapons) the Market sells for credits.
+    /// Dojo: items researched in a Clan Dojo lab. Both ordered like Crafting trees.
+    pub market: Vec<Suggestion>,
+    pub dojo: Vec<Suggestion>,
     pub trees: CraftWeb,
 }
 
@@ -230,7 +259,13 @@ fn section<'a>(current: &'a Flat, name: &'a str) -> impl Iterator<Item = (&'a st
 }
 
 /// Builds the whole page. Pure, so it can be tested without Tauri.
-pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &HashSet<String>) -> MasteryData {
+pub fn build(
+    index: &ItemIndex,
+    nodes: &NodeData,
+    current: &Flat,
+    favorites: &HashSet<String>,
+    wiki: &WikiData,
+) -> MasteryData {
     let curves: HashMap<&str, (XpCurve, Tab)> =
         index.masterables().iter().map(|m| (m.path.as_str(), (m.curve, m.tab))).collect();
 
@@ -343,6 +378,9 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
             relic_needs: Vec::new(),
             stage: if i.owned > 0 { "owned" } else if building(i) { "building" } else { "" },
             maxes_left: maxes_left(i),
+            lab: None,
+            market_credits: None,
+            market_built: false,
         }
     };
     let to_get = |i: &&FoundryItem| i.owned == 0 && !i.mastered && !building(i);
@@ -492,10 +530,26 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
         .filter(|i| i.parts.iter().any(|p| curves.contains_key(p.path.as_str())))
         .map(suggestion)
         .collect();
-    crafted.sort_by(|a, b| {
-        let done = |s: &Suggestion| s.xp_gain == 0;
-        done(a).cmp(&done(b)).then(b.xp_gain.cmp(&a.xp_gain)).then_with(|| a.name.cmp(&b.name))
-    });
+    crafted.sort_by(still_to_master);
+
+    // Dojo: researched in a Clan Dojo lab. Market: a credit price from WFCD or the wiki, or a
+    // known sale; WFCD prices lab blueprints too (Banshee), which the Market doesn't sell.
+    let mut dojo = Vec::new();
+    let mut market = Vec::new();
+    for i in &items {
+        if let Some(lab) = wiki.research_lab(&i.name) {
+            dojo.push(Suggestion { lab: Some(lab.to_string()), ..suggestion(i) });
+            continue;
+        }
+        let extra = MARKET_EXTRA.iter().find(|(name, _, _)| *name == i.name);
+        let blueprint = index.build_of(&i.path).and_then(|b| b.bp_cost).or_else(|| wiki.market_blueprint_cost(&i.name));
+        let sale = extra.map(|&(_, c, built)| (c, built)).or(blueprint.map(|c| (c, false)));
+        if let Some((credits, built)) = sale {
+            market.push(Suggestion { market_credits: Some(credits), market_built: built, ..suggestion(i) });
+        }
+    }
+    dojo.sort_by(still_to_master);
+    market.sort_by(still_to_master);
 
     MasteryData {
         has_data: !current.is_empty(),
@@ -512,8 +566,16 @@ pub fn build(index: &ItemIndex, nodes: &NodeData, current: &Flat, favorites: &Ha
         relics,
         platinum,
         crafted,
+        market,
+        dojo,
         trees: craft_web(&items),
     }
+}
+
+/// Items still to master first (most XP first), then the mastered ones, by name within each.
+fn still_to_master(a: &Suggestion, b: &Suggestion) -> std::cmp::Ordering {
+    let done = |s: &Suggestion| s.xp_gain == 0;
+    done(a).cmp(&done(b)).then(b.xp_gain.cmp(&a.xp_gain)).then_with(|| a.name.cmp(&b.name))
 }
 
 /// Junction tags look like "EarthToVenusJunction".
@@ -568,7 +630,8 @@ pub fn get_mastery(shared: State<'_, Arc<Shared>>) -> Result<MasteryData, String
     };
     let current = store.current(&account).map_err(|e| e.to_string())?;
     let favorites = store.favorites(&account).map_err(|e| e.to_string())?;
-    Ok(build(&index, &nodes, &current, &favorites))
+    let wiki = shared.wiki.read().unwrap().clone();
+    Ok(build(&index, &nodes, &current, &favorites, &wiki))
 }
 
 #[cfg(test)]
@@ -614,6 +677,44 @@ mod tests {
     }
 
     #[test]
+    fn market_and_dojo_lists() {
+        let index = ItemIndex::build(&[
+            (
+                "Warframes".into(),
+                br#"[{"uniqueName":"/Banshee","name":"Banshee","masterable":true,"buildPrice":25000,"bpCost":35000},
+                    {"uniqueName":"/Excalibur","name":"Excalibur","masterable":true,"buildPrice":25000,"bpCost":35000},
+                    {"uniqueName":"/Volt","name":"Volt","masterable":true}]"#
+                    .to_vec(),
+            ),
+            (
+                "Primary".into(),
+                br#"[{"uniqueName":"/Mk1Braton","name":"Mk1-Braton","masterable":true},
+                    {"uniqueName":"/Burston","name":"Burston","masterable":true}]"#
+                    .to_vec(),
+            ),
+        ]);
+        let wiki = WikiData::parse(
+            Some(r#"return { Blueprints = { Burston = { BPCost = 20000, Credits = 15000, Result = "Burston" } } }"#),
+            Some(r#"local Data = { ["Labs"] = { ["Tenno"] = { Name = "Tenno Lab" } },
+                ["Research"] = { ['Banshee'] = { Lab = 'Tenno', Credits = 10000 } } }
+                return Data"#),
+            None,
+        );
+        let raw = r#"{"Suits": [{"ItemType": "/Excalibur"}], "XPInfo": [{"ItemType": "/Excalibur", "XP": 900000}]}"#;
+        let d = build(&index, &NodeData::default(), &parse(raw.as_bytes()).unwrap().values, &HashSet::new(), &wiki);
+
+        let dojo: Vec<(&str, Option<&str>)> = d.dojo.iter().map(|s| (s.name.as_str(), s.lab.as_deref())).collect();
+        assert_eq!(dojo, [("Banshee", Some("Tenno Lab"))], "researched, though WFCD prices its blueprint");
+        let market: Vec<(&str, Option<i64>, bool)> =
+            d.market.iter().map(|s| (s.name.as_str(), s.market_credits, s.market_built)).collect();
+        assert_eq!(
+            market,
+            [("Burston", Some(20_000), false), ("Mk1-Braton", Some(15_000), true), ("Excalibur", Some(35_000), false)],
+            "still to master first, the mastered Excalibur last; Volt isn't sold"
+        );
+    }
+
+    #[test]
     fn totals_boxes_and_lists() {
         let nodes = NodeData::from_lua(
             r#"{ Name = "A", Planet = "Mercury", MasteryExp = 24, InternalName = "SolNode1", IsTracked = true },
@@ -631,7 +732,7 @@ mod tests {
             "MiscItems": [{"ItemCount": 2, "ItemType": "/R/A"}, {"ItemCount": 1, "ItemType": "/Cell"}]
         }"#;
         let current = parse(raw.as_bytes()).unwrap().values;
-        let d = build(&index(), &nodes, &current, &HashSet::new());
+        let d = build(&index(), &nodes, &current, &HashSet::new(), &WikiData::default());
 
         // Volt rank 10 (100,000 = 1000 × 10²) → 2,000; Braton rank 30 → 3,000.
         assert_eq!(d.breakdown.items, 5_000);
@@ -671,7 +772,7 @@ mod tests {
             "MiscItems": [{"ItemCount": 1, "ItemType": "/R/A"}]
         }"#;
         let current = parse(raw.as_bytes()).unwrap().values;
-        let d = build(&index(), &NodeData::default(), &current, &HashSet::new());
+        let d = build(&index(), &NodeData::default(), &current, &HashSet::new(), &WikiData::default());
         let frost = d.easy.iter().find(|s| s.name == "Frost Prime").expect("in the foundry, so Easy");
         assert!(frost.building && !frost.owned);
         assert!(!d.relics.iter().any(|s| s.name == "Frost Prime"), "not something to farm");
@@ -688,7 +789,7 @@ mod tests {
         let index = ItemIndex::build(&[("Secondary".into(), secondary.to_vec())]);
         let raw = r#"{"XPInfo":[{"ItemType":"/W/Lato","XP":450000}],"Pistols":[{"ItemType":"/W/Bolto","XP":10}]}"#;
         let current = parse(raw.as_bytes()).unwrap().values;
-        let web = build(&index, &NodeData::default(), &current, &HashSet::new()).trees;
+        let web = build(&index, &NodeData::default(), &current, &HashSet::new(), &WikiData::default()).trees;
         let mut names: Vec<&str> = web.nodes.iter().map(|n| n.name.as_str()).collect();
         names.sort();
         assert_eq!(names, ["Akbolto", "Bolto", "Lato"], "Vasto isn't part of any build");
@@ -698,7 +799,7 @@ mod tests {
         let bolto = web.nodes.iter().find(|n| n.name == "Bolto").unwrap();
         assert!(lato.mastered && !bolto.mastered && bolto.owned == 1);
 
-        let data = build(&index, &NodeData::default(), &current, &HashSet::new());
+        let data = build(&index, &NodeData::default(), &current, &HashSet::new(), &WikiData::default());
         let cards: Vec<(&str, i64)> = data.crafted.iter().map(|s| (s.name.as_str(), s.xp_gain)).collect();
         assert_eq!(cards, [("Akbolto", 3000), ("Bolto", 3000)], "one card per item built from items");
         assert_eq!(data.crafted[0].parts[0].needed, 2);
@@ -711,12 +812,12 @@ mod tests {
         let parts = r#"{"Recipes": [{"ItemCount": 1, "ItemType": "/Lotus/Types/Recipes/FrostPrimeBlueprint"},
                                     {"ItemCount": 1, "ItemType": "/Lotus/Types/Recipes/FrostPrimeChassis"}]"#;
         let set = format!("{parts}}}");
-        let d = build(&index(), &NodeData::default(), &parse(set.as_bytes()).unwrap().values, &HashSet::new());
+        let d = build(&index(), &NodeData::default(), &parse(set.as_bytes()).unwrap().values, &HashSet::new(), &WikiData::default());
         let frost = d.easy.iter().find(|s| s.name == "Frost Prime").expect("every part held, so Easy");
         assert_eq!(frost.stage, "set", "Orokin Cells still missing");
 
         let ready = format!(r#"{parts}, "MiscItems": [{{"ItemCount": 2, "ItemType": "/Cell"}}], "Suits": [{{"ItemType": "/Volt"}}]}}"#);
-        let d = build(&index(), &NodeData::default(), &parse(ready.as_bytes()).unwrap().values, &HashSet::new());
+        let d = build(&index(), &NodeData::default(), &parse(ready.as_bytes()).unwrap().values, &HashSet::new(), &WikiData::default());
         let stages: Vec<(&str, &str)> = d.easy.iter().map(|s| (s.name.as_str(), s.stage)).collect();
         assert_eq!(stages, [("Volt", "owned"), ("Frost Prime", "ready")], "owned first, then ready to build");
     }
@@ -742,7 +843,7 @@ mod tests {
             format!(r#"{{"Recipes": [{}]}}"#, rows.join(","))
         };
         let easy = |raw: String| {
-            let d = build(&index, &NodeData::default(), &parse(raw.as_bytes()).unwrap().values, &HashSet::new());
+            let d = build(&index, &NodeData::default(), &parse(raw.as_bytes()).unwrap().values, &HashSet::new(), &WikiData::default());
             d.easy.iter().find(|s| s.name == "Equinox").map(|s| s.stage)
         };
         assert_eq!(easy(recipes(&[])), None, "aspect blueprints and chassis only");
@@ -758,7 +859,7 @@ mod tests {
             "MiscItems": [{"ItemCount": 1, "ItemType": "/R/A"}]
         }"#;
         let current = parse(raw.as_bytes()).unwrap().values;
-        let d = build(&index(), &NodeData::default(), &current, &HashSet::new());
+        let d = build(&index(), &NodeData::default(), &current, &HashSet::new(), &WikiData::default());
         let frost = d.relics.iter().find(|s| s.name == "Frost Prime").unwrap();
         assert!(frost.ready);
         assert_eq!((frost.relic_parts_owned, frost.relic_parts_total), (2, 2));
@@ -787,7 +888,7 @@ mod tests {
                              {{"ItemCount": 1, "ItemType": "{wr}LavosPrimeChassisBlueprint"}}],
                 "MiscItems": [{{"ItemCount": 1, "ItemType": "/R/L"}}]}}"#
         );
-        let d = build(&index, &NodeData::default(), &parse(raw.as_bytes()).unwrap().values, &HashSet::new());
+        let d = build(&index, &NodeData::default(), &parse(raw.as_bytes()).unwrap().values, &HashSet::new(), &WikiData::default());
         let lavos = d.relics.iter().find(|s| s.name == "Lavos Prime").unwrap();
         assert_eq!((lavos.relic_parts_owned, lavos.relic_parts_total), (2, 3), "chassis blueprint counts as the chassis");
         assert!(!lavos.ready, "neuroptics still missing");
@@ -801,13 +902,13 @@ mod tests {
     fn closest_sets_first_and_only_with_owned_relics() {
         // Frost has 1 of 2 relic parts; no relic is owned for the missing one → not listed.
         let no_relic = r#"{"Recipes": [{"ItemCount": 1, "ItemType": "/Lotus/Types/Recipes/FrostPrimeBlueprint"}]}"#;
-        let d = build(&index(), &NodeData::default(), &parse(no_relic.as_bytes()).unwrap().values, &HashSet::new());
+        let d = build(&index(), &NodeData::default(), &parse(no_relic.as_bytes()).unwrap().values, &HashSet::new(), &WikiData::default());
         assert!(d.relics.is_empty(), "missing part, but no owned relic drops it");
 
         // Same, with the relic owned → listed as 1/2.
         let with_relic = r#"{"Recipes": [{"ItemCount": 1, "ItemType": "/Lotus/Types/Recipes/FrostPrimeBlueprint"}],
             "MiscItems": [{"ItemCount": 3, "ItemType": "/R/A"}]}"#;
-        let d = build(&index(), &NodeData::default(), &parse(with_relic.as_bytes()).unwrap().values, &HashSet::new());
+        let d = build(&index(), &NodeData::default(), &parse(with_relic.as_bytes()).unwrap().values, &HashSet::new(), &WikiData::default());
         let frost = &d.relics[0];
         assert_eq!((frost.relic_parts_owned, frost.relic_parts_total, frost.ready), (1, 2, false));
         // The popup's breakdown: the one missing part, the owned relic that drops it, held 3 times.
