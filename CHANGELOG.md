@@ -5,6 +5,15 @@ it's 0.x, anything may still change.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-27
+
+### Added
+- Mastery Helper: Market and Dojo tabs. Market lists items whose blueprint the Market sells for
+  credits, plus the Mk1 weapons (sold built). Dojo lists items researched in a Clan Dojo lab, with
+  the lab. Both have the Favorites and Hide mastered filters, a category filter (Warframes,
+  Primary, Secondary, Melee, Archwing, Companions), and a card opens the item's recipe. Dojo
+  can also be narrowed to one research lab.
+
 ## [1.0.3] — 2026-11-24
 
 ### Fixed
@@ -378,7 +387,8 @@ First public beta.
   network errors and an offline banner, opt-in debug logging, and signed auto-updates from
   GitHub Releases.
 
-[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/t-2ddy/Lotus-Warframe-Companion-App/compare/v1.0.0...v1.0.1

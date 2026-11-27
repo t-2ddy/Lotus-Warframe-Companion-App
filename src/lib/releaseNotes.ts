@@ -7,6 +7,13 @@ export type ReleaseNote = { version: string; fixes: string[] };
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.1.0",
+    fixes: [
+      "New Mastery Helper tabs, Market and Dojo: items you can buy as a blueprint for credits (and the Mk1 weapons), and items researched in a Clan Dojo lab.",
+      "Both tabs can be filtered by Favorites, Hide mastered and category (Warframes, Primary, Secondary, Melee, Archwing, Companions); Dojo also by research lab.",
+    ],
+  },
+  {
     version: "1.0.3",
     fixes: [
       "Chat: item suggestions no longer list blueprints; the item or part itself is suggested (Saryn Prime Chassis, not Saryn Prime Chassis Blueprint).",
